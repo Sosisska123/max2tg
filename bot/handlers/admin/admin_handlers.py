@@ -15,7 +15,7 @@ from models.temp_prikol import prikol
 
 from utils.date_utils import get_tomorrow_date
 from services.mailing_manager import send_new_post_to_admin, send_files_to_users
-from utils.phrases import AdminPhrases, ButtonPhrases, ErrorPhrases
+from utils.phrases import AdminPhrases, ErrorPhrases
 from utils.states import LoadScheduleFsm
 
 # from vk.vk_schedule import stop_parsing_jobs
@@ -281,101 +281,12 @@ async def admin_add_user_command(
 # region MAX
 
 
-@router.message(
-    Command(ButtonPhrases.command_activate_max),
-    IsAdmin(),
-)
-async def admin_activate_max_command(message: Message, db: Database) -> None:
-    """
-    Mark this group as connected to the MAX forwarding
-    example: /max_subscribe
-    """
-
-    # Check if command has invoked in the correct chat type
-    if message.chat.type not in ("group", "supergroup"):
-        await message.reply(ErrorPhrases.wrong_chat_type())
-        return
-
-    logging.debug(
-        "CHAT ID %s | CHAT TYPE %s | CHAT NAME %s",
-        message.chat.id,
-        message.chat.type,
-        message.chat.title,
-    )
-
-    logging.info(
-        "CHAT ID %s | CHAT TYPE %s | CHAT NAME %s",
-        message.chat.id,
-        message.chat.type,
-        message.chat.title,
-    )
-
-    # If this group is already connected we'll return
-    group = await db.get_connected_group(message.chat.id)
-
-    if group is not None:
-        await message.answer(ErrorPhrases.chat_already_connected(group.title))
-        return
-
-    # Add new subscription
-    group = await db.add_connected_group(
-        tg_id=message.chat.id, title=message.chat.title
-    )
-
-    if group:
-        await message.answer(f"✅ Group {group.title} has successfully connected")
-    else:
-        await message.answer(ErrorPhrases.something_went_wrong())
-
-
-@router.message(
-    Command(ButtonPhrases.command_deactivate_max),
-    IsAdmin(),
-    F.chat.type.in_(("group", "supergroup")),
-)
-async def admin_deactivate_max_command(message: Message, db: Database) -> None:
-    """
-    Unmark this group as connected to the MAX forwarding
-    example: /max_unsubscribe
-    """
-
-    # Check if command has invoked in the correct chat type
-    if message.chat.type not in ("group", "supergroup"):
-        await message.reply(ErrorPhrases.wrong_chat_type())
-        return
-
-    logging.debug(
-        "CHAT ID %s | CHAT TYPE %s | CHAT NAME %s",
-        message.chat.id,
-        message.chat.type,
-        message.chat.title,
-    )
-
-    # If this group ain't subscribed we'll return
-    group = await db.get_connected_group(message.chat.id)
-
-    if group is None:
-        await message.answer(ErrorPhrases.chat_never_connected(message.chat.title))
-        return
-
-    # Otherwise, we unsubscribe
-    r = await db.remove_connected_group(group.group_link)
-
-    if r:
-        await message.answer(f"❌ Group {group.title} has successfully disconnected")
-    else:
-        await message.answer(ErrorPhrases.something_went_wrong())
-
-
-@router.message(
-    Command(AdminPhrases.command_list_subscribed_groups_max),
-    IsAdmin(),
-)
+@router.message(Command(AdminPhrases.command_list_subscribed_groups_max), IsAdmin())
 async def admin_max_subscribed_groups_max_command(
     message: Message, db: Database
 ) -> None:
     """
-    List all subscribed groups
+    List all subscribed Telegram groups
     """
 
     groups = await db.get_connected_groups_list()
@@ -384,7 +295,10 @@ async def admin_max_subscribed_groups_max_command(
         await message.answer(ErrorPhrases.something_went_wrong())
         return
 
-    await message.answer(f"{group.title}: {group.group_link}\n" for group in groups)
+    output = "\n".join(
+        f"{group.title}: {group.group_link} | {group.tg_id}" for group in groups
+    )
+    await message.answer(output if output else "No subscribed groups found.")
 
 
 # endregion

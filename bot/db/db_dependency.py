@@ -5,7 +5,7 @@ from settings import config
 
 class DBDependency:
     def __init__(self) -> None:
-        self._engine = create_async_engine(url=config.db_url)
+        self._engine = create_async_engine(url=config.bot.db_url)
         self._session_factory = async_sessionmaker(
             bind=self._engine,
             expire_on_commit=False,

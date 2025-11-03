@@ -4,10 +4,10 @@ from aiogram.enums import ParseMode
 
 # from aiogram.client.session.aiohttp import AiohttpSession
 
-from settings import config
+from settings import env
 
 bot = Bot(
-    token=config.bot_token.get_secret_value(),
+    token=env.bot_token.get_secret_value(),
     default=DefaultBotProperties(parse_mode=ParseMode.HTML),
 )
 

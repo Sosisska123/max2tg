@@ -1,0 +1,5 @@
+# bot/config.yaml
+bot:
+  admins: [1320607880]
+  db_url: sqlite+aiosqlite:///bot/data.db
+  ttl_default: 5

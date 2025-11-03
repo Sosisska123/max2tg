@@ -31,6 +31,8 @@ class Phrases:
     def registration_required() -> str:
         return "⚠️ не рег. /reg <b>нпк</b> чтобы рег"
 
+    # region MAX
+
     @staticmethod
     def max_forwarded_message_template(
         max_chat: str, username: str, text: str, reply_message_id: int = None
@@ -40,6 +42,80 @@ class Phrases:
             if reply_message_id is None
             else f"<b>{username}</b>: {text}\n<i>Reply to {reply_message_id}</i>"
         )
+
+    @staticmethod
+    def group_connected_success(group_name: str, creator_id: int) -> str:
+        return f"✅ Group <b>{group_name}</b> has successfully connected. Creator ID: <code>{creator_id}</code>\nNow select the <b>MAX</b> chat to listen to:"
+
+    @staticmethod
+    def group_disconnected_success(group_name: str) -> str:
+        return f"❌ Group <b>{group_name}</b> has successfully disconnected"
+
+    @staticmethod
+    def select_max_chat() -> str:
+        return "Select the <i>MAX</i> chat to listen to:"
+
+    @staticmethod
+    def max_chat_connected_success(chat_name: str) -> str:
+        return f"✅ MAX chat <b>{chat_name}</b> has successfully connected"
+
+    @staticmethod
+    def max_chat_disconnected_success(chat_name: str) -> str:
+        return f"❌ MAX chat <b>{chat_name}</b> has successfully disconnected."
+
+    @staticmethod
+    def max_chat_already_connected(chat_name: str) -> str:
+        return f"⚠️ MAX chat <b>{chat_name}</b> already connected."
+
+    @staticmethod
+    def max_chat_never_connected(chat_name: str) -> str:
+        return f"⚠️ MAX chat <b>{chat_name}</b> never connected."
+
+    @staticmethod
+    def max_chat_list(chats: list) -> str:
+        if not chats:
+            return "No MAX chats connected."
+        return "Connected MAX chats:\n" + "\n".join(
+            [f"- <b>{chat}</b>" for chat in chats]
+        )
+
+    @staticmethod
+    def max_chat_not_found() -> str:
+        return "⚠️ MAX chat not found."
+
+    @staticmethod
+    def max_registration_required() -> str:
+        return f"❌ Your <b>MAX</b> account is not set. <b>MAX Websocket</b> requires a phone number to login.\n\nTo continue type /{ButtonPhrases.command_max_help}"
+
+    @staticmethod
+    def max_login_success() -> str:
+        return "✅ MAX login success."
+
+    @staticmethod
+    def max_login_failed() -> str:
+        return "⚠️ MAX login failed"
+
+    @staticmethod
+    def max_already_logged() -> str:
+        return "⚠️ MAX already logged in"
+
+    @staticmethod
+    def max_phone_number_request() -> str:
+        return "Please send your phone number to login to MAX. +71234567890"
+
+    @staticmethod
+    def max_phone_code_request(phone_number: str) -> str:
+        return f"You'r number is +{phone_number}. Now please send the code you received"
+
+    @staticmethod
+    def max_password_request() -> str:
+        return "Please send your MAX password"
+
+    @staticmethod
+    def max_same_user_error(created_user_id) -> str:
+        return f"⚠️ This group was subscribed by {created_user_id}! Only the same user can unsubscribe groups and chats"
+
+    # endregion
 
 
 class AdminPhrases:
@@ -199,3 +275,16 @@ class ButtonPhrases:
     command_deactivate_max_desc: str = (
         "Unmark this group as connected to the MAX forwarding"
     )
+
+    @staticmethod
+    def max_reg_help() -> str:
+        return (
+            "Чтобы связать чат в <b>MAX</b> и группу <b>Телеграм</b>, нужен любой <b>номер телефона</b> который зарегистрирован в MAX и <b>находится в этом чате</b>\n\n"
+            f"Только <b>одному</b> человеку нужно зарегистрироваться в этом боте и отправить сообщение /{ButtonPhrases.command_activate_max} в группу, <b>где уже находится этот бот</b>\n\n"
+            f"/{ButtonPhrases.command_deactivate_max} — Чтобы отписать эту группу\n"
+            f"/{ButtonPhrases.command_max_delete} — Для удаления регистрации в боте"
+        )
+
+    command_max_help = "max_help"
+    command_max_reg = "max_reg"
+    command_max_delete = "max_delete"

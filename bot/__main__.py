@@ -45,10 +45,10 @@ async def start() -> None:
 
     # Add throttling middleware after registration middleware
     dp.message.middleware(
-        ThrottlingMiddleware(session=async_session, ttl=config.ttl_default)
+        ThrottlingMiddleware(session=async_session, ttl=config.bot.ttl_default)
     )
     dp.callback_query.middleware(
-        ThrottlingMiddleware(session=async_session, ttl=config.ttl_default)
+        ThrottlingMiddleware(session=async_session, ttl=config.bot.ttl_default)
     )
 
     # vk_schedule.create_scheduler(

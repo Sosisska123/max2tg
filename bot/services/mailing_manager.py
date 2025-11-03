@@ -303,11 +303,10 @@ async def send_new_post_to_admin(
 ):
     many_files = is_plural(files)
 
-    # vremenno todo ⚠️⚠️⚠️ temp todo
+    # vremenno todo ⚠️⚠️⚠️
     if file_type == "photo":
-        if (
-            len(files) == 5
-        ):  # 5 - vmeste s ring schedyle todo ring checking:: ring | 1 course | 2c | 3c | ...
+        # 5 - vmeste s ring schedyle:: ring | 1 course | 2c | 3c | ...
+        if len(files) == 5:
             files = files[2]
             many_files = False
 
@@ -341,7 +340,7 @@ async def send_new_post_to_admin(
 
     from utils.scheduler import create_job
 
-    for admin in config.admins:
+    for admin in config.bot.admins:
         if many_files:
             msg = await bot.send_media_group(admin, media_group.build())
 
@@ -406,7 +405,7 @@ async def send_paid_files_to_users(
 
 
 async def send_report_to_admin(bot: Bot, report: str):
-    for admin in config.admins:
+    for admin in config.bot.admins:
         await bot.send_message(chat_id=admin, text=f"⚠️ {report}")
 
 

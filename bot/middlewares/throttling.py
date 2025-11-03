@@ -35,7 +35,7 @@ class ThrottlingMiddleware(BaseMiddleware):
             data["db"] = db
 
             # попуск админов
-            if user in self.config.admins:
+            if user in self.config.bot.admins:
                 return await handler(event, data)
 
             # Check if user is registered (for all other commands)

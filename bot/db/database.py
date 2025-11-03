@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import select, update
@@ -8,7 +10,6 @@ from models.schedule import Schedule, ScheduleType
 from models.temp_schedule import TempSchedule
 
 from typing import Optional
-import logging
 import datetime
 
 from utils.date_utils import get_today_date, get_tomorrow_date
@@ -128,7 +129,8 @@ class Database:
             file_type (str): Used for bot proper file sending. One of: 'photo' | 'doc'.
             schedule_type (str, optional): Type of schedule, can be modified or regular. Modified type has more priority. Defaults to ScheduleType.REGULAR.value.
 
-        Returns:
+         Returns:
+            GGroup: New created group, Returns if Group successfully added
             Schedule: The new schedule object
         """
         try:
@@ -376,9 +378,29 @@ class Database:
 
     # endregion
 
-    # regions MAX Forwarding Messages
+    # region MAX Forwarding Messages
 
-    async def add_connected_group(self, tg_id: int, title: str) -> GGroup:
+    async def update_user_max_state(self, user_id: int, state: bool) -> bool:
+        try:
+            user = await self.get_user(user_id)
+
+            if not user:
+                return False
+
+            user.can_subscribe_max = state
+            await self.session.commit()
+
+            return True
+        except SQLAlchemyError as e:
+            log.error(e)
+            await self.session.rollback()
+            return False
+
+    # - - - TELEGRAM
+
+    async def add_connected_group(
+        self, tg_id: int, title: str, creator_id: int
+    ) -> GGroup:
         """Save subscribed group
 
         Args:
@@ -386,10 +408,10 @@ class Database:
             title (str): Telegram group name
 
         Returns:
-            FGroup: New created group, Returns if Group successfully added
+            GGroup: New created group, Returns if Group successfully added
         """
         try:
-            group = GGroup(group_link=tg_id, title=title)
+            group = GGroup(group_link=tg_id, title=title, created_user_id=creator_id)
 
             self.session.add(group)
             await self.session.commit()
@@ -462,19 +484,26 @@ class Database:
     # - - - MAX
 
     async def max_add_listening_chat(
-        self, max_chat_id: int, max_chat_title: str
+        self, max_chat_id: int, max_chat_title: str, connected_group_id: int
     ) -> bool:
         """Set given chat as listening and then forward all incoming messages to the Telegrams groups
 
         Args:
             max_chat_id (int): Link of a listening chat
+            max_chat_title (str): Title of a listening chat
+            connected_group_id (int): ID of a connected Telegram group
 
         Returns:
             bool: True if success, False otherwise
         """
 
         try:
-            group = GGroup(group_link=max_chat_id, title=max_chat_title, is_max=True)
+            group = GGroup(
+                group_link=max_chat_id,
+                title=max_chat_title,
+                is_max=True,
+                connected_group=connected_group_id,
+            )
 
             self.session.add(group)
             await self.session.commit()
@@ -505,8 +534,8 @@ class Database:
             log.error(e)
             return False
 
-    async def max_get_listening_chats(self) -> list[int]:
-        """Get all listening chats and their links
+    async def max_get_avaible_chats(self) -> list[int]:
+        """Get all available to listen chats and their links
 
         Returns:
             list[int]: Links of each listening chat
