@@ -209,16 +209,14 @@ async def max_phone_number(message: Message, state: FSMContext) -> None:
         phone_number = message.text
 
         # Format ph nm
-        if len(phone_number) > 10:
-            if len(phone_number) == 12 and phone_number.startswith("+7"):
-                phone_number = phone_number[2:]
-            elif len(phone_number) == 11 and phone_number.startswith("7"):
-                phone_number = phone_number[1:]
-            elif len(phone_number) == 10:
-                pass
-            else:
-                raise ValueError("Invalid phone number format")
-
+        if len(phone_number) == 12 and phone_number.startswith("+7"):
+            phone_number = phone_number[2:]
+        elif len(phone_number) == 11 and phone_number.startswith("7"):
+            phone_number = phone_number[1:]
+        elif len(phone_number) == 10:
+            pass
+        else:
+            raise ValueError("Invalid phone number format")
         # Validate that phone_number contains only digits
         if not phone_number.isdigit():
             raise ValueError("Phone number must contain only digits")

@@ -15,4 +15,5 @@ logger = logging.getLogger(__name__)
 async def admin_add_listening_chat_command(
     callback: CallbackQuery,
 ):
-    pass
+    await callback.answer()
+    # TODO: Implement logic to add listening chat

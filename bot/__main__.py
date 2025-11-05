@@ -7,8 +7,6 @@ from handlers.admin.admin_handlers import router as admin_router
 from handlers.user import router as user_router
 from handlers.group import router as group_router
 
-# from callbacks.defaults import router as default_callback_router
-
 from db.database import init_db
 from db.db_dependency import DBDependency
 
@@ -40,7 +38,6 @@ async def start() -> None:
         admin_router,
         user_router,
         group_router,
-        # default_callback_router,
     )
 
     # Add throttling middleware after registration middleware
@@ -51,10 +48,6 @@ async def start() -> None:
         ThrottlingMiddleware(session=async_session, ttl=config.bot.ttl_default)
     )
 
-    # vk_schedule.create_scheduler(
-    #     npk_vk_requests, knn_vk_requests, db_dependency=db_dependency
-    # )
-
     await bot.delete_webhook(True)
     await dp.start_polling(bot)
 
@@ -64,8 +57,6 @@ if __name__ == "__main__":
         logging.info("================ Бот запущен ================")
         asyncio.run(start())
     except KeyboardInterrupt:
-        # scheduler.shutdown()
-        # await bot.session.close()
         logging.info("================ Бот остановлен ================")
 
     except Exception as e:

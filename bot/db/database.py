@@ -129,8 +129,7 @@ class Database:
             file_type (str): Used for bot proper file sending. One of: 'photo' | 'doc'.
             schedule_type (str, optional): Type of schedule, can be modified or regular. Modified type has more priority. Defaults to ScheduleType.REGULAR.value.
 
-         Returns:
-            GGroup: New created group, Returns if Group successfully added
+        Returns:
             Schedule: The new schedule object
         """
         try:

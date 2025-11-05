@@ -15,7 +15,7 @@ class GGroup(Base):
     title: Mapped[str] = mapped_column(String(100))  # group name
     is_max: Mapped[bool] = mapped_column(
         default=False
-    )  # as i mentioned above, this object can be either a max chat and a telegram grup
+    )  # as i mentioned above, this object can be either a max chat and a telegram group
     connected_group: Mapped[str] = mapped_column(
         String(1000), nullable=True
     )  # if this is a MAX chat it should have a link to the connected Telegram group
