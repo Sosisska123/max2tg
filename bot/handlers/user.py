@@ -1,3 +1,4 @@
+from asyncio import QueueShutDown
 import logging
 import re
 
@@ -7,7 +8,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from keyboards.admin.admin_kb import create_max_chats_keyboard
+from keyboards.user_kb import create_max_availible_chats_keyboard
 from utils.states import LoginWithMax, SubscribeMaxChat
 from db.database import Database
 
@@ -99,7 +100,7 @@ async def admin_activate_max_command(
         return
 
     # if user is not logged in with MAX phone number
-    if user.max_short_token is None:
+    if not user.can_connect_max:
         await message.reply(Phrases.max_registration_required())
         return
 
@@ -116,20 +117,22 @@ async def admin_activate_max_command(
     )
 
     # If this group is already connected we'll return
-    group = await db.get_connected_group(message.chat.id)
+    group = await db.get_tg_group(message.chat.id)
     if group is not None:
         await message.answer(ErrorPhrases.chat_already_connected(group.title))
         return
 
     # Add new subscription
-    group = await db.add_connected_group(
-        tg_id=message.chat.id, title=message.chat.title, creator_id=user.tg_id
+    group = await db.create_tg_group(
+        group_id=message.chat.id, title=message.chat.title, creator_id=user.tg_id
     )
 
     if group:
         await message.answer(
             Phrases.group_connected_success(message.chat.title, group.created_user_id),
-            reply_markup=create_max_chats_keyboard(await db.max_get_avaible_chats()),
+            reply_markup=create_max_availible_chats_keyboard(
+                await db.get_list_max_available_chats()
+            ),
         )
     else:
         await message.answer(ErrorPhrases.something_went_wrong())
@@ -160,7 +163,7 @@ async def admin_deactivate_max_command(message: Message, db: Database) -> None:
     )
 
     # If this group ain't subscribed we'll return
-    group = await db.get_connected_group(message.chat.id)
+    group = await db.get_tg_group(message.chat.id)
 
     if group is None:
         await message.answer(ErrorPhrases.chat_never_connected(message.chat.title))
@@ -176,7 +179,7 @@ async def admin_deactivate_max_command(message: Message, db: Database) -> None:
         return
 
     # unsubscribe Otherwise
-    r = await db.remove_connected_group(group.group_link)
+    r = await db.remove_tg_group(group.group_id)
 
     if r:
         await message.answer(Phrases.group_disconnected_success(message.chat.title))
@@ -194,7 +197,7 @@ async def max_reg_command(message: Message, db: Database, state: FSMContext) -> 
         return
 
     # Check if user already logged with Max phone number
-    if user.max_short_token is not None:
+    if user.can_connect_max:
         await message.answer(Phrases.max_already_logged())
         return
 
@@ -219,26 +222,26 @@ async def max_phone_number(
                 f"Phone number must be in format +7xxxxxxxxxx, got: {phone_number}"
             )
 
+        await parser.parser_queue.put(
+            {
+                "action": "start_auth",
+                "user_id": message.from_user.id,
+                "data": {"phone": phone_number},
+            }
+        )
+
     except ValueError:
         await message.reply(ErrorPhrases.invalid())
         await state.clear()
         return
 
-    try:
-        await parser.parser_queue.put(
-            {
-                "action": "start_auth",
-                "data": {"phone": phone_number, "user_id": message.from_user.id},
-            }
-        )
-    except Exception as e:
+    except QueueShutDown as e:
         logger.error("Failed to queue auth request: %s", e)
         await message.reply(ErrorPhrases.network_issues())
         await state.clear()
         return
 
-    await message.reply(Phrases.max_phone_code_request(phone_number))
-    await state.update_data(phone_number=phone_number)
+    await message.reply(Phrases.max_wait_for_phone_acception(phone_number))
     await state.set_state(LoginWithMax.phone_code)
 
 
@@ -252,27 +255,27 @@ async def max_phone_code(
         if not code.isdigit():
             raise ValueError("Code must contain only digits")
 
-        data = await state.get_data()
-        phone_number = data.get("phone_number")
         token = await db.get_max_token(message.from_user.id)
 
-        try:
-            await parser.parser_queue.put(
-                {
-                    "action": "verify_code",
-                    "data": {"phone": phone_number, "code": code, "token": token},
-                }
-            )
-        except Exception as queue_error:
-            logger.error("Failed to queue verify_code: %s", queue_error)
-            await message.reply(ErrorPhrases.network_issues())
-            await state.clear()
-            return
+        if token is None:
+            raise Exception("Token not found")
+
+        await parser.parser_queue.put(
+            {
+                "action": "verify_code",
+                "user_id": message.from_user.id,
+                "data": {"code": code, "token": token},
+            }
+        )
 
         await message.reply(Phrases.wait_for_confirmation())
 
     except ValueError:
         await message.reply(ErrorPhrases.invalid())
+
+    except QueueShutDown as e:
+        logger.error("Failed to queue auth request: %s", e)
+        await message.reply(ErrorPhrases.network_issues())
 
     except Exception as e:
         logger.error(e)

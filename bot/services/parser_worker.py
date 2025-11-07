@@ -15,17 +15,17 @@ async def listen_for_parser_messages(db_dependency: DBDependency, bot_queue, bot
         message = await bot_queue.get()
 
         try:
-            action = message.get("action")
-            data = message.get("data")
+            action = message.get("action", None)
+            user_id = message.get("user_id", None)
+            data = message.get("data", {})
 
             if not data:
                 logger.error("Missing data for send_short_token action")
                 continue
 
             match action:
-                case "send_short_token":
-                    user_id = data.get("user_id")
-                    token_value = data.get("token")
+                case "phone_confirmed":
+                    token_value = data.get("token", None)
 
                     if not user_id or not token_value:
                         logger.error(
@@ -33,17 +33,28 @@ async def listen_for_parser_messages(db_dependency: DBDependency, bot_queue, bot
                         )
                         continue
 
-                    async with db_dependency.session() as session:
+                    logger.info(
+                        "📃 Phone number confirmed, waiting for sms code...| Token: %s | User ID: %s",
+                        token_value,
+                        user_id,
+                    )
+
+                    async with db_dependency.db_session() as session:
                         db = Database(session=session)
 
                         await db.update_user_max_token(user_id, token_value)
-                        await bot.send_message(user_id, Phrases.max_login_success())
+                        await bot.send_message(user_id, Phrases.max_request_sms())
+
+                case "sms_confirmed":
+                    await bot.send_message(user_id, Phrases.max_login_success())
 
                 case "send_full_token":
                     pass
 
                 case "send_chat_list":
                     pass
+                case _:
+                    logger.error(f"Unknown action: {action}")
 
         except Exception as e:
             logger.error(f"Error while executing command from parser: {e}")

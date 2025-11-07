@@ -188,7 +188,9 @@ def get_read_last_message_json(
     )
 
 
-def get_messages_json(chat_id: int, timestamp: int, seq: int) -> str:
+def get_messages_json(
+    chat_id: int, timestamp: int, seq: int, messages_count: int = 30
+) -> str:
     """**OPCODE 49**
     Get messages from chat. idk should you send subscription first or not
 
@@ -251,7 +253,7 @@ def get_messages_json(chat_id: int, timestamp: int, seq: int) -> str:
                 "chatId": chat_id,
                 "from": timestamp,
                 "forward": 0,
-                "backward": 30,
+                "backward": messages_count,
                 "getMessages": True,
             },
         }

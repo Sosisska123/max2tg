@@ -11,7 +11,6 @@ from typing import Any, Callable, Optional
 
 from functools import wraps
 
-from parser.models.chat import ChatModel
 from parser.templates.payloads import (
     get_ping_json,
     get_useragent_header_json,
@@ -47,13 +46,20 @@ def ensure_connected(method: Callable):
 
 
 class MaxClient:
-    def __init__(self, bot_queue: asyncio.Queue, token: str = None, proxy: str = None):
+    def __init__(
+        self,
+        bot_queue: asyncio.Queue,
+        tg_user_id: int,
+        token: str = None,
+        proxy: str = None,
+    ):
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.token = token
         self.seq = itertools.count(0, 1)
         self.ws_url = config.ws_url
         self.bot_queue = bot_queue
         self.proxy = proxy
+        self.tg_user_id = tg_user_id
 
         self._counter = itertools.count(0, 1)
         self._current_listening_chat: Optional[str] = None
@@ -151,6 +157,7 @@ class MaxClient:
         """Ping it every 1 minute if your listening to a chat. Use it before getting messages
         Subscribe or unsubscribe from a chat"""
 
+        logger.debug("Start/stop pinging to chat %s... | state: %s", chat_id, state)
         await self.websocket.send(get_subscribe_json(state, chat_id, self.seq))
         self.seq = next(self._counter)
 
@@ -158,6 +165,11 @@ class MaxClient:
     async def read_last_message(self, chat_id: int, message_id: str):
         """Mark the last message in a chat as read"""
 
+        logger.debug(
+            "Marking last message in chat %s as read... | message_id: %s",
+            chat_id,
+            message_id,
+        )
         await self.websocket.send(
             get_read_last_message_json(chat_id, message_id, get_unix_now(), self.seq)
         )
@@ -167,6 +179,7 @@ class MaxClient:
     async def get_messages_from_chat(self, chat_id: int):
         """Get messages from a chat. It sends only when the chat was opened for the first time"""
 
+        logger.debug("Getting messages from chat %s ...", chat_id)
         await self.websocket.send(get_messages_json(chat_id, get_unix_now(), self.seq))
         self.seq = next(self._counter)
 
@@ -174,6 +187,7 @@ class MaxClient:
     async def start_auth(self, phone: str):
         """Start the authentication process"""
 
+        logger.debug("Starting authentication...")
         await self.websocket.send(get_start_auth_json(phone, self.seq))
         self.seq = next(self._counter)
 
@@ -181,6 +195,7 @@ class MaxClient:
     async def check_code(self, token: str, code: str):
         """Check the authentication code"""
 
+        logger.debug("Verifying code... | token: %s", token)
         await self.websocket.send(get_check_code_json(token, code, self.seq))
         self.seq = next(self._counter)
 
@@ -188,26 +203,22 @@ class MaxClient:
     async def process_message(self, message: dict[str, Any]):
         """Manage a received message"""
 
-        await self.bot_queue.put(message)
+        logger.debug("Processing message: %s", message)
 
         match message.get("opcode", -1):
-            case -1:
-                logger.warning(f"Unknown opcode: {message}")
-
             case 17:
-                logger.debug("Phone number sent, waiting for code")
-
                 short_token = message.get("payload", {}).get("token", None)
+                self.token = short_token
 
                 await self.bot_queue.put(
                     {
-                        "action": "verify_code",
-                        "token": short_token,
-                        "data": {
-                            "token": short_token,
-                        },
+                        "action": "phone_confirmed",
+                        "user_id": self.tg_user_id,
+                        "data": {"token": short_token},
                     }
                 )
+
+                logger.debug("Phone number sent, code requested, short token received")
 
             case 18:
                 token_attrs = message.get("payload", {}).get("tokenAttrs", None)
@@ -215,44 +226,42 @@ class MaxClient:
                 if token_attrs:
                     self.token = token_attrs.get("LOGIN", None).get("token")
 
-                logger.info("Token received")
+                await self.bot_queue.put(
+                    {
+                        "action": "sms_confirmed",
+                        "user_id": self.tg_user_id,
+                        "data": {},
+                    }
+                )
+
+                logger.info("🔑 New Token received | %s", self.token)
+
+                # Fetching chats
+                self._fetch_chats()
 
             case 19:
                 logger.debug("Collecting user information | Fetching chats...")
-                await self.fetch_chats(message)
-            case 49:
-                logger.debug("Collecting chat messages...")
-                self.fetch_chats(message)
+
             case 49:
                 logger.debug("Collecting chat messages...")
 
-    async def fetch_chats(self, msg: dict[str, Any]) -> list[ChatModel]:
-        """Fetch chats using the provided auth token"""
+            case -1:
+                logger.warning(f"Unknown opcode: {message}")
+            case _:
+                logger.warning(f"Unknown opcode: {message}")
+
+    @ensure_connected
+    async def _fetch_chats(self):
+        """
+        Fetch chats using the provided auth token.
+        Use if you are logging for the first time
+        """
 
         if self.token is None:
             raise ValueError("Need to set token first")
 
-        payload = msg.get("payload", None)
-
-        if not payload:
-            logger.warning("No payload in message")
-            return []
-
-        chats = payload.get("chats", [])
-
-        result = []
-
-        for chat in chats:
-            result.append(
-                ChatModel(
-                    id=chat.get("id", -1),
-                    title=chat.get("title", "error"),
-                    last_message_id=chat.get("lastMessage").get("id", -1),
-                    messages_count=chat.get("messagesCount", -1),
-                )
-            )
-
-        return result
+        await self.websocket.send(get_token_json(self.token))
+        self.seq = next(self._counter)
 
     @ensure_connected
     async def _handshake(self):
@@ -279,6 +288,9 @@ class MaxClient:
                 logger.debug(f"Received message from MAX: {message}")
 
                 # Handle errors
+                if isinstance(message, str):
+                    raise Exception(f"💀 Ебучие стринг")
+
                 if message.get("payload", {}).get("error"):
                     raise Exception(
                         f"💀 Error: {message['payload']['error']}: {message['payload']['localizedMessage']}"
@@ -335,7 +347,7 @@ class MaxParser:
         if token in self.clients:
             raise ValueError("Client with this token already exists")
 
-        client = MaxClient(self.bot_queue, token)
+        client = MaxClient(bot_queue=self.bot_queue, token=token, tg_user_id=tg_user_id)
         await client.connect()
         self.clients[tg_user_id] = client
 
@@ -351,7 +363,7 @@ class MaxParser:
         if tg_user_id in self.clients:
             raise ValueError("Client with this TG User ID already exists")
 
-        client = MaxClient(bot_queue=self.bot_queue)
+        client = MaxClient(bot_queue=self.bot_queue, tg_user_id=tg_user_id)
 
         await client.connect(without_token=True)
         await client.start_auth(phone_number)
@@ -392,25 +404,33 @@ class MaxParser:
             command = await self.parser_queue.get()
             try:
                 action = command.get("action")
-                token = command.get("token", None)
+                user_id = command.get("user_id", None)
                 data = command.get("data")
 
                 match action:
                     case "start_auth":
-                        await self.start_auth(data.get("phone"))
+                        await self.start_auth(user_id, data.get("phone"))
+
+                    case "verify_code":
+                        await self.check_code(
+                            user_id, data.get("token"), data.get("code")
+                        )
+
+                    case "get_chat_list":
+                        client = self.get_client(user_id)
+
+                        if not client:
+                            continue
+
+                        # TODO:
 
                     case "subscribe_to_chat":
-                        client = self.get_client(token)
+                        client = self.get_client(user_id)
 
                         if not client:
                             continue
 
                         await client.listen_to_chat(data.get("chat_id"))
-
-                    case "verify_code":
-                        await self.check_code(
-                            data.get("phone"), data.get("token"), data.get("code")
-                        )
 
             except Exception as e:
                 logger.error(f"Error while executing command from bot: {e}")

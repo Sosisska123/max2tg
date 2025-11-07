@@ -16,3 +16,4 @@ class User(Base):
     notification_state: Mapped[bool] = mapped_column(default=True)
     group: Mapped[int] = mapped_column(nullable=True)
     max_short_token: Mapped[str] = mapped_column(String(200), nullable=True)
+    can_connect_max: Mapped[bool] = mapped_column(default=False)

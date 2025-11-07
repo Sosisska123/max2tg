@@ -1,8 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from models.max_groups import GGroup
-
 from utils.phrases import AdminPhrases
 
 
@@ -52,18 +50,3 @@ def manage_new_schedule(temp_id: int) -> InlineKeyboardMarkup:
     )
 
     return builder.adjust(2).as_markup(resize_keyboard=True)
-
-
-def create_max_chats_keyboard(*groups: GGroup) -> InlineKeyboardMarkup:
-    ggroups = list(groups)
-    builder = InlineKeyboardBuilder()
-
-    if len(ggroups) == 0:
-        builder.button(text="🚫 Empty", callback_data="max_chat_empty")
-        return builder.as_markup(resize_keyboard=True)
-        # ༒︎✟ϟϟ⌖𐀏
-
-    for group in ggroups:
-        builder.button(text=group.title, callback_data=f"max_chat_{group.id}")
-
-    return builder.adjust(2, repeat=True).as_markup(resize_keyboard=True)

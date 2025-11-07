@@ -289,14 +289,14 @@ async def admin_max_subscribed_groups_max_command(
     List all subscribed Telegram groups
     """
 
-    groups = await db.get_connected_groups_list()
+    groups = await db.get_tg_groups_list()
 
     if groups is None:
         await message.answer(ErrorPhrases.something_went_wrong())
         return
 
     output = "\n".join(
-        f"{group.title}: {group.group_link} | {group.tg_id}" for group in groups
+        f"{group.title}: {group.group_id} | {group.tg_id}" for group in groups
     )
     await message.answer(output if output else "No subscribed groups found.")
 

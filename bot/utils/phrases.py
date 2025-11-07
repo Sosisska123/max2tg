@@ -89,7 +89,7 @@ class Phrases:
 
     @staticmethod
     def max_login_success() -> str:
-        return "✅ MAX login success."
+        return f"✅ MAX login success. Now move to your group where you want to receive notifications and type /{ButtonPhrases.command_activate_max}"
 
     @staticmethod
     def max_login_failed() -> str:
@@ -104,8 +104,14 @@ class Phrases:
         return "Please send your phone number to login to MAX. +71234567890"
 
     @staticmethod
-    def max_phone_code_request(phone_number: str) -> str:
-        return f"Your number is +7{phone_number}. Now please send the code you received"
+    def max_wait_for_phone_acception(phone_number: str) -> str:
+        return (
+            f"Your number is +7{phone_number}. ⌛ Please wait until number is verified"
+        )
+
+    @staticmethod
+    def max_request_sms() -> str:
+        return "✅ <b>Now please send the code you received</b>"
 
     @staticmethod
     def wait_for_confirmation() -> str:
