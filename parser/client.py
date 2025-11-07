@@ -5,6 +5,7 @@ import asyncio
 import logging
 import websockets
 import itertools
+import json
 
 from typing import Any, Callable, Optional
 
@@ -37,10 +38,10 @@ logger = logging.getLogger(__name__)
 
 def ensure_connected(method: Callable):
     @wraps(method)
-    def wrapper(self, *args, **kwargs):
+    async def wrapper(self, *args, **kwargs):
         if self.websocket is None:
             raise RuntimeError("WebSocket not connected. Call .connect() first.")
-        return method(self, *args, **kwargs)
+        return await method(self, *args, **kwargs)
 
     return wrapper
 
@@ -57,7 +58,7 @@ class MaxClient:
         self._counter = itertools.count(0, 1)
         self._current_listening_chat: Optional[str] = None
         self._ping_task: Optional[asyncio.Task] = None
-        self._chat_subscribtion_ping_task: Optional[asyncio.Task] = None
+        self._chat_subscription_ping_task: Optional[asyncio.Task] = None
         self._recv_task: Optional[asyncio.Task] = None
 
     async def connect(self, without_token: bool = False):
@@ -96,9 +97,12 @@ class MaxClient:
 
         if self.websocket:
             await self.websocket.close()
-            self._recv_task.cancel()
-            self._ping_task.cancel()
-            self._chat_subscribtion_ping_task.cancel()
+            if self._recv_task:
+                self._recv_task.cancel()
+            if self._ping_task:
+                self._ping_task.cancel()
+            if self._chat_subscription_ping_task:
+                self._chat_subscription_ping_task.cancel()
             self.websocket = None
 
             logger.info("❌ Disconnected from MAX websocket")
@@ -181,7 +185,7 @@ class MaxClient:
         self.seq = next(self._counter)
 
     @ensure_connected
-    async def procceed_message(self, message: dict[str, Any]):
+    async def process_message(self, message: dict[str, Any]):
         """Manage a received message"""
 
         await self.bot_queue.put(message)
@@ -195,7 +199,7 @@ class MaxClient:
 
                 short_token = message.get("payload", {}).get("token", None)
 
-                self.bot_queue.put(
+                await self.bot_queue.put(
                     {
                         "action": "verify_code",
                         "token": short_token,
@@ -215,6 +219,9 @@ class MaxClient:
 
             case 19:
                 logger.debug("Collecting user information | Fetching chats...")
+                await self.fetch_chats(message)
+            case 49:
+                logger.debug("Collecting chat messages...")
                 self.fetch_chats(message)
             case 49:
                 logger.debug("Collecting chat messages...")
@@ -235,7 +242,7 @@ class MaxClient:
 
         result = []
 
-        for chat in len(chats):
+        for chat in chats:
             result.append(
                 ChatModel(
                     id=chat.get("id", -1),
@@ -262,10 +269,12 @@ class MaxClient:
 
         while self.websocket is not None:
             try:
-                message = await self.websocket.recv()
+                raw_message = await self.websocket.recv()
 
-                if not message:
+                if not raw_message:
                     continue
+
+                message = json.loads(raw_message)
 
                 logger.debug(f"Received message from MAX: {message}")
 
@@ -275,11 +284,12 @@ class MaxClient:
                         f"💀 Error: {message['payload']['error']}: {message['payload']['localizedMessage']}"
                     )
 
-                self.procceed_message(message)
+                await self.process_message(message)
 
             except websockets.exceptions.ConnectionClosed:
                 logger.warning("Websocket connection closed. Reconnecting...")
-                await self.connect()
+                # TODO: Implement controlled reconnection to avoid task leaks
+                break
 
             except Exception as e:
                 logger.error(f"Error while reading messages from MAX: {e}")
@@ -313,65 +323,67 @@ class MaxParser:
         self.bot_queue = bot_queue
         self.parser_queue = asyncio.Queue()
 
-    async def add_client(self, token: str):
-        """Create a new MaxClient with the token and add it to the parser"""
+    async def add_client(self, tg_user_id: int, token: str):
+        """
+        Create a new MaxClient with the token and add it to the parser
+        The key is the TG User ID
+        """
 
-        if not token:
+        if not token or not tg_user_id:
             raise ValueError("Token cannot be empty")
 
         if token in self.clients:
             raise ValueError("Client with this token already exists")
 
-        client = MaxClient(token, self.bot_queue)
+        client = MaxClient(self.bot_queue, token)
         await client.connect()
-        self.clients[token] = client
+        self.clients[tg_user_id] = client
 
-    async def start_auth(self, phone_number: str):
-        """To get token you need to login. an sms acception will be sent to your phone"""
+    async def start_auth(self, tg_user_id: int, phone_number: str):
+        """
+        To get token you need to login. an sms acception will be sent to your phone
+        The key is the TG User ID
+        """
 
-        if not phone_number:
-            raise ValueError("Phone number cannot be empty")
+        if not phone_number or not tg_user_id:
+            raise ValueError("One of the fields is empty")
 
-        if phone_number in self.clients:
-            raise ValueError("Client with this token already exists")
+        if tg_user_id in self.clients:
+            raise ValueError("Client with this TG User ID already exists")
 
         client = MaxClient(bot_queue=self.bot_queue)
 
         await client.connect(without_token=True)
         await client.start_auth(phone_number)
 
-        self.clients[phone_number] = client
+        self.clients[tg_user_id] = client
 
-    async def check_code(self, phone_number: str, short_token: str, code: str):
+    async def check_code(self, tg_user_id: int, short_token: str, code: str):
         """Verify code and get token"""
 
-        if not short_token or not code or not phone_number:
+        if not short_token or not code or not tg_user_id:
             raise ValueError("All fields must be filled in")
 
-        client = self.get_client(phone_number)
+        client = self.get_client(tg_user_id)
 
         await client.check_code(short_token, code)
 
-        del self.clients[phone_number]
-        self.clients[short_token] = client
-
-    async def remove_client(self, token: str):
+    async def remove_client(self, tg_user_id: int):
         """Remove a MaxClient from the parser"""
 
-        if token not in self.clients:
+        if tg_user_id not in self.clients:
             raise ValueError("Client with this token does not exist")
 
-        await self.clients[token].disconnect()
-        del self.clients[token]
+        del self.clients[tg_user_id]
 
-    def get_client(self, token: str) -> MaxClient:
-        """Get a MaxClient by its token"""
+    def get_client(self, tg_user_id: int) -> Optional[MaxClient]:
+        """Get a MaxClient by its TG User ID"""
 
-        if token not in self.clients:
-            logger.warning("Client with this token does not exist")
+        if tg_user_id not in self.clients:
+            logger.warning("Client with this TG User ID does not exist")
             return None
 
-        return self.clients[token]
+        return self.clients[tg_user_id]
 
     async def listen_for_commands(self):
         """Listen for commands from the bot and execute them."""
@@ -399,8 +411,6 @@ class MaxParser:
                         await self.check_code(
                             data.get("phone"), data.get("token"), data.get("code")
                         )
-
-                # TODO: proper handling, просчитать все варианты ошибок, правильно работать с мини токеном, биг токеном и номермо телефона
 
             except Exception as e:
                 logger.error(f"Error while executing command from bot: {e}")

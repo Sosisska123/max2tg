@@ -1,4 +1,6 @@
 import logging
+import re
+
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
@@ -212,8 +214,6 @@ async def max_phone_number(
         phone_number = message.text
 
         # Format ph nm
-        import re
-
         if not re.match(r"^\+7\d{10}$", phone_number):
             raise ValueError(
                 f"Phone number must be in format +7xxxxxxxxxx, got: {phone_number}"
@@ -224,12 +224,18 @@ async def max_phone_number(
         await state.clear()
         return
 
-    await parser.parser_queue.put(
-        {
-            "action": "start_auth",
-            "data": {"phone": phone_number, "user_id": message.from_user.id},
-        }
-    )
+    try:
+        await parser.parser_queue.put(
+            {
+                "action": "start_auth",
+                "data": {"phone": phone_number, "user_id": message.from_user.id},
+            }
+        )
+    except Exception as e:
+        logger.error("Failed to queue auth request: %s", e)
+        await message.reply(ErrorPhrases.network_issues())
+        await state.clear()
+        return
 
     await message.reply(Phrases.max_phone_code_request(phone_number))
     await state.update_data(phone_number=phone_number)
@@ -250,12 +256,18 @@ async def max_phone_code(
         phone_number = data.get("phone_number")
         token = await db.get_max_token(message.from_user.id)
 
-        await parser.parser_queue.put(
-            {
-                "action": "verify_code",
-                "data": {"phone": phone_number, "code": code, "token": token},
-            }
-        )
+        try:
+            await parser.parser_queue.put(
+                {
+                    "action": "verify_code",
+                    "data": {"phone": phone_number, "code": code, "token": token},
+                }
+            )
+        except Exception as queue_error:
+            logger.error("Failed to queue verify_code: %s", queue_error)
+            await message.reply(ErrorPhrases.network_issues())
+            await state.clear()
+            return
 
         await message.reply(Phrases.wait_for_confirmation())
 
@@ -264,7 +276,7 @@ async def max_phone_code(
 
     except Exception as e:
         logger.error(e)
-        await message.reply(ErrorPhrases.network_issues())
+        await message.reply(ErrorPhrases.something_went_wrong())
 
     finally:
         await state.clear()

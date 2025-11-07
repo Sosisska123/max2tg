@@ -1,4 +1,5 @@
 import datetime
+from typing import Optional
 
 from models.user import Base
 
@@ -16,10 +17,10 @@ class GGroup(Base):
     is_max: Mapped[bool] = mapped_column(
         default=False
     )  # as i mentioned above, this object can be either a max chat and a telegram group
-    connected_group: Mapped[str] = mapped_column(
+    connected_group: Mapped[Optional[str]] = mapped_column(
         String(1000), nullable=True
     )  # if this is a MAX chat it should have a link to the connected Telegram group
-    created_user_id: Mapped[int] = mapped_column(
+    created_user_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, nullable=True
     )  # telegram id of an user who created this group
 

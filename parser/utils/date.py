@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def get_unix_now() -> int:
@@ -7,13 +7,16 @@ def get_unix_now() -> int:
     return datetime.now().timestamp()
 
 
-def utc_to_unix(date: str):
+def utc_to_unix(date: str) -> int:
     """Convert UTC to UNIX, UTC is format YYYY-MM-DD HH:MM:SS"""
 
-    return datetime.strptime(date, "%Y-%m-%d %H:%M:%S").timestamp()
+    dt = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
+    return dt.replace(tzinfo=timezone.utc).timestamp()
 
 
-def unix_to_utc(timestamp: int):
+def unix_to_utc(timestamp: int) -> str:
     """Convert UNIX to UTC, format YYYY-MM-DD HH:MM:SS"""
 
-    return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )

@@ -353,7 +353,7 @@ class Database:
     async def remove_connected_group(self, tg_id: int) -> bool:
         """Remove subscribed group."""
         try:
-            stmt = delete(GGroup).where(GGroup.group_link == tg_id, not GGroup.is_max)
+            stmt = delete(GGroup).where(GGroup.group_link == tg_id, ~GGroup.is_max)
             result = await self.session.execute(stmt)
             await self.session.commit()
             return result.rowcount > 0
@@ -365,7 +365,9 @@ class Database:
     async def get_connected_groups_list(self) -> List[GGroup]:
         """Get subscribed group list."""
         try:
-            result = await self.session.execute(select(GGroup).where(not GGroup.is_max))
+            result = await self.session.execute(
+                select(GGroup).where(GGroup.is_max == False)  # noqa: E712
+            )
             return result.scalars().all()
         except SQLAlchemyError as e:
             log.error(f"Error getting connected groups list: {e}")

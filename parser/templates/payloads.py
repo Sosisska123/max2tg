@@ -1,5 +1,6 @@
 import json
 import uuid
+import re
 
 
 def get_ping_json(seq: int) -> str:
@@ -303,8 +304,6 @@ def get_start_auth_json(phone: str, seq: int) -> str:
     Returns:
         str: JSON
     """
-
-    import re
 
     if not re.match(r"^\+7\d{10}$", phone):
         raise ValueError(f"Phone number must be in format +7xxxxxxxxxx, got: {phone}")

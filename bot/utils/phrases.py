@@ -112,8 +112,8 @@ class Phrases:
         return "⌛ Waiting for confirmation..."
 
     @staticmethod
-    def max_same_user_error(created_user_id) -> str:
-        return f"⚠️ This group was subscribed by {created_user_id}! Only the same user can unsubscribe groups and chats"
+    def max_same_user_error(created_user_id: int) -> str:
+        return f"⚠️ This group was subscribed by <code>{created_user_id}</code>! Only the same user can unsubscribe groups and chats"
 
     # endregion
 

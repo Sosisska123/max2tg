@@ -16,20 +16,28 @@ async def listen_for_parser_messages(db_dependency: DBDependency, bot_queue, bot
 
         try:
             action = message.get("action")
-            token = message.get("token")
             data = message.get("data")
+
+            if not data:
+                logger.error("Missing data for send_short_token action")
+                continue
 
             match action:
                 case "send_short_token":
+                    user_id = data.get("user_id")
+                    token_value = data.get("token")
+
+                    if not user_id or not token_value:
+                        logger.error(
+                            f"Missing user_id or token in send_short_token data: {data}"
+                        )
+                        continue
+
                     async with db_dependency.session() as session:
                         db = Database(session=session)
 
-                        await db.update_user_max_token(
-                            data.get("user_id"), data.get("token")
-                        )
-                        await bot.send_message(
-                            data.get("user_id"), Phrases.max_login_success()
-                        )
+                        await db.update_user_max_token(user_id, token_value)
+                        await bot.send_message(user_id, Phrases.max_login_success())
 
                 case "send_full_token":
                     pass
