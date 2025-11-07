@@ -30,10 +30,11 @@ class Settings(BaseSettings):
         validate_default=False,
         case_sensitive=False,
         yaml_file=yaml_file_path,
+        yaml_config_section="ws",
         extra="ignore",
     )
 
-    ws: str = Field(...)
+    ws_url: str = Field(alias="url")
 
     logging: LoggingConfig = LoggingConfig()
 
