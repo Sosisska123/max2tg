@@ -237,10 +237,18 @@ class MaxClient:
                 logger.info("🔑 New Token received | %s", self.token)
 
                 # Fetching chats
-                self._fetch_chats()
+                await self._fetch_chats()
 
             case 19:
                 logger.debug("Collecting user information | Fetching chats...")
+
+                await self.bot_queue.put(
+                    {
+                        "action": "fetch_chats",
+                        "user_id": self.tg_user_id,
+                        "data": {"all_message": message},
+                    }
+                )
 
             case 49:
                 logger.debug("Collecting chat messages...")
@@ -344,8 +352,8 @@ class MaxParser:
         if not token or not tg_user_id:
             raise ValueError("Token cannot be empty")
 
-        if token in self.clients:
-            raise ValueError("Client with this token already exists")
+        if tg_user_id in self.clients:
+            raise ValueError("Client with this TG User ID already exists")
 
         client = MaxClient(bot_queue=self.bot_queue, token=token, tg_user_id=tg_user_id)
         await client.connect()
@@ -384,7 +392,7 @@ class MaxParser:
         """Remove a MaxClient from the parser"""
 
         if tg_user_id not in self.clients:
-            raise ValueError("Client with this token does not exist")
+            raise ValueError("Client with this TG User ID does not exist")
 
         del self.clients[tg_user_id]
 
@@ -415,14 +423,6 @@ class MaxParser:
                         await self.check_code(
                             user_id, data.get("token"), data.get("code")
                         )
-
-                    case "get_chat_list":
-                        client = self.get_client(user_id)
-
-                        if not client:
-                            continue
-
-                        # TODO:
 
                     case "subscribe_to_chat":
                         client = self.get_client(user_id)

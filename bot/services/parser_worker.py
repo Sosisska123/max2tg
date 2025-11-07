@@ -19,13 +19,13 @@ async def listen_for_parser_messages(db_dependency: DBDependency, bot_queue, bot
             user_id = message.get("user_id", None)
             data = message.get("data", {})
 
-            if not data:
-                logger.error("Missing data for send_short_token action")
-                continue
-
             match action:
                 case "phone_confirmed":
                     token_value = data.get("token", None)
+
+                    if not data:
+                        logger.error("Missing data for send_short_token action")
+                        continue
 
                     if not user_id or not token_value:
                         logger.error(
@@ -46,10 +46,18 @@ async def listen_for_parser_messages(db_dependency: DBDependency, bot_queue, bot
                         await bot.send_message(user_id, Phrases.max_request_sms())
 
                 case "sms_confirmed":
+                    if not user_id:
+                        logger.error(f"Missing user_id for {action} action")
+                        continue
+
                     await bot.send_message(user_id, Phrases.max_login_success())
 
-                case "send_full_token":
-                    pass
+                case "fetch_chats":
+                    all_message = data.get("all_message", None)
+
+                    if not all_message:
+                        logger.error(f"Missing all_message in fetch_chats data: {data}")
+                        continue
 
                 case "send_chat_list":
                     pass

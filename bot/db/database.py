@@ -333,7 +333,7 @@ class Database:
             await self.session.rollback()
             return False
 
-    async def connect_tg_max(self, tg_group_id: int, max_chat_id: int):
+    async def connect_tg_max(self, tg_group_id: int, max_chat_id: int) -> bool:
         try:
             stmt = (
                 update(TGGroup)
@@ -350,7 +350,7 @@ class Database:
             await self.session.rollback()
             return False
 
-    async def disconnect_tg_max(self, tg_group_id: int):
+    async def disconnect_tg_max(self, tg_group_id: int) -> bool:
         try:
             stmt = (
                 update(TGGroup)
@@ -371,7 +371,7 @@ class Database:
         return user.max_short_token if user else None
 
     async def get_user_max_permission(self, user_id: int) -> bool:
-        """Get user's MAX token."""
+        """Get user's MAX permission."""
         user = await self.get_user(user_id)
         return user.can_connect_max if user else False
 

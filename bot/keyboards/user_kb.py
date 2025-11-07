@@ -39,7 +39,7 @@ def under_post_keyboard() -> InlineKeyboardMarkup:
     return builder.adjust(2).as_markup(resize_keyboard=True)
 
 
-def create_max_availible_chats_keyboard(*groups: MAXGroup) -> InlineKeyboardMarkup:
+def create_max_available_chats_keyboard(*groups: MAXGroup) -> InlineKeyboardMarkup:
     ggroups = list(groups)
     builder = InlineKeyboardBuilder()
 

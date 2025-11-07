@@ -37,7 +37,7 @@ class MAXGroup(Base):
         BigInteger, unique=True
     )  # maxs id, ex: -68956055956057
     title: Mapped[str] = mapped_column(String(100))  # group name
-    last_message_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    last_message_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     messages_count: Mapped[int] = mapped_column(default=0)
     created_at: Mapped[datetime.datetime] = mapped_column(
         default=lambda: datetime.datetime.now()

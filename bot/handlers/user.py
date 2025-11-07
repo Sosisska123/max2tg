@@ -8,7 +8,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
-from keyboards.user_kb import create_max_availible_chats_keyboard
+from keyboards.user_kb import create_max_available_chats_keyboard
 from utils.states import LoginWithMax, SubscribeMaxChat
 from db.database import Database
 
@@ -130,7 +130,7 @@ async def admin_activate_max_command(
     if group:
         await message.answer(
             Phrases.group_connected_success(message.chat.title, group.created_user_id),
-            reply_markup=create_max_availible_chats_keyboard(
+            reply_markup=create_max_available_chats_keyboard(
                 await db.get_list_max_available_chats()
             ),
         )
