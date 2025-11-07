@@ -13,6 +13,7 @@ from keyboards.user_kb import main_user_panel
 from keyboards.setup_ui import set_bot_commands
 
 from utils.phrases import ButtonPhrases, ErrorPhrases, Phrases
+from parser.client import MaxParser
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -96,7 +97,7 @@ async def admin_activate_max_command(
         return
 
     # if user is not logged in with MAX phone number
-    if not user.can_subscribe_max:
+    if user.max_short_token is None:
         await message.reply(Phrases.max_registration_required())
         return
 
@@ -105,7 +106,7 @@ async def admin_activate_max_command(
         await message.reply(ErrorPhrases.wrong_chat_type())
         return
 
-    logging.debug(
+    logger.debug(
         "CHAT ID %s | CHAT TYPE %s | CHAT NAME %s",
         message.chat.id,
         message.chat.type,
@@ -149,7 +150,7 @@ async def admin_deactivate_max_command(message: Message, db: Database) -> None:
         await message.reply(ErrorPhrases.wrong_chat_type())
         return
 
-    logging.debug(
+    logger.debug(
         "DEACTIVATE CHAT ID %s | CHAT TYPE %s | CHAT NAME %s",
         message.chat.id,
         message.chat.type,
@@ -191,7 +192,7 @@ async def max_reg_command(message: Message, db: Database, state: FSMContext) -> 
         return
 
     # Check if user already logged with Max phone number
-    if user.can_subscribe_max:
+    if user.max_short_token is not None:
         await message.answer(Phrases.max_already_logged())
         return
 
@@ -201,7 +202,9 @@ async def max_reg_command(message: Message, db: Database, state: FSMContext) -> 
 
 
 @router.message(LoginWithMax.phone_number)
-async def max_phone_number(message: Message, state: FSMContext) -> None:
+async def max_phone_number(
+    message: Message, state: FSMContext, parser: MaxParser
+) -> None:
     try:
         if not message.text:
             raise ValueError("No text provided")
@@ -209,63 +212,63 @@ async def max_phone_number(message: Message, state: FSMContext) -> None:
         phone_number = message.text
 
         # Format ph nm
-        if len(phone_number) == 12 and phone_number.startswith("+7"):
-            phone_number = phone_number[2:]
-        elif len(phone_number) == 11 and phone_number.startswith("7"):
-            phone_number = phone_number[1:]
-        elif len(phone_number) == 10:
-            pass
-        else:
-            raise ValueError("Invalid phone number format")
-        # Validate that phone_number contains only digits
-        if not phone_number.isdigit():
-            raise ValueError("Phone number must contain only digits")
+        import re
+
+        if not re.match(r"^\+7\d{10}$", phone_number):
+            raise ValueError(
+                f"Phone number must be in format +7xxxxxxxxxx, got: {phone_number}"
+            )
 
     except ValueError:
         await message.reply(ErrorPhrases.invalid())
         await state.clear()
         return
 
+    await parser.parser_queue.put(
+        {
+            "action": "start_auth",
+            "data": {"phone": phone_number, "user_id": message.from_user.id},
+        }
+    )
+
     await message.reply(Phrases.max_phone_code_request(phone_number))
-
     await state.update_data(phone_number=phone_number)
-
     await state.set_state(LoginWithMax.phone_code)
 
 
 @router.message(LoginWithMax.phone_code)
-async def max_phone_code(message: Message, db: Database, state: FSMContext) -> None:
-    data = await state.get_data()
-
+async def max_phone_code(
+    message: Message, db: Database, state: FSMContext, parser: MaxParser
+) -> None:
     try:
+        code = message.text
+
+        if not code.isdigit():
+            raise ValueError("Code must contain only digits")
+
+        data = await state.get_data()
         phone_number = data.get("phone_number")
-        code = int(message.text)
+        token = await db.get_max_token(message.from_user.id)
+
+        await parser.parser_queue.put(
+            {
+                "action": "verify_code",
+                "data": {"phone": phone_number, "code": code, "token": token},
+            }
+        )
+
+        await message.reply(Phrases.wait_for_confirmation())
 
     except ValueError:
         await message.reply(ErrorPhrases.invalid())
+
+    except Exception as e:
+        logger.error(e)
+        await message.reply(ErrorPhrases.network_issues())
+
+    finally:
         await state.clear()
         return
-
-    # TODO MAX LOGIN
-    # TODO MAX LOGIN
-    # TODO MAX LOGIN
-
-    await db.update_user_max_state(message.from_user.id, True)
-
-    await message.answer(Phrases.max_login_success())
-
-    await state.clear()
-
-    # Verify code with MAX API
-    # is_verified = await verify_max_code(phone_number, code)
-
-    # if is_verified:
-    #     await db.update_user_max_state(message.from_user.id, True)
-    #     await message.answer(Phrases.max_login_success())
-    #     await state.clear()
-    # else:
-    #     await message.reply(ErrorPhrases.invalid_verification_code())
-    #     await state.clear()
 
 
 @router.message(Command(ButtonPhrases.command_max_delete))

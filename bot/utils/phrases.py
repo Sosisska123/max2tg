@@ -105,11 +105,11 @@ class Phrases:
 
     @staticmethod
     def max_phone_code_request(phone_number: str) -> str:
-        return f"You'r number is +{phone_number}. Now please send the code you received"
+        return f"Your number is +7{phone_number}. Now please send the code you received"
 
     @staticmethod
-    def max_password_request() -> str:
-        return "Please send your MAX password"
+    def wait_for_confirmation() -> str:
+        return "⌛ Waiting for confirmation..."
 
     @staticmethod
     def max_same_user_error(created_user_id) -> str:
@@ -238,6 +238,10 @@ class ErrorPhrases:
     @staticmethod
     def chat_never_connected(chat_name: str) -> str:
         return f"⚠️ {chat_name.capitalize()} never connected"
+
+    @staticmethod
+    def network_issues() -> str:
+        return "❌ something went wrong with server. Please try again later"
 
 
 class ButtonPhrases:

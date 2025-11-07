@@ -15,5 +15,4 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(30), unique=True)
     notification_state: Mapped[bool] = mapped_column(default=True)
     group: Mapped[int] = mapped_column(nullable=True)
-    can_subscribe_max: Mapped[bool] = mapped_column(default=False)
-    max_phone_number: Mapped[str] = mapped_column(String(10), nullable=True)
+    max_short_token: Mapped[str] = mapped_column(String(200), nullable=True)

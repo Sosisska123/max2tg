@@ -1,17 +1,16 @@
+import datetime
+import json
 import logging
+from typing import List, Optional
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, desc, select, update
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.max_groups import GGroup
-from models.user import Base, User
 from models.schedule import Schedule, ScheduleType
 from models.temp_schedule import TempSchedule
-
-from typing import Optional
-import datetime
-
+from models.user import Base, User
 from utils.date_utils import get_today_date, get_tomorrow_date
 
 log = logging.getLogger(__name__)
@@ -28,89 +27,75 @@ class Database:
         self.session = session
 
     async def get_user(self, user_id: int) -> Optional[User]:
-        """
-        Get user by Telegram ID
-        """
-
+        """Get user by Telegram ID."""
         try:
             result = await self.session.execute(
                 select(User).where(User.tg_id == user_id)
             )
             return result.scalar_one_or_none()
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error getting user {user_id}: {e}")
             return None
 
-    async def create_user(self, user_id: int, username: str, group: str) -> User:
-        """
-        Add new user if it doesn't exist. Returns the new user object
-        """
-
+    async def create_user(
+        self, user_id: int, username: str, group: str
+    ) -> Optional[User]:
+        """Add new user if it doesn't exist. Returns the new user object."""
         try:
             user = User(tg_id=user_id, username=username, group=group)
             self.session.add(user)
             await self.session.commit()
             return user
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error creating user {user_id}: {e}")
+            await self.session.rollback()
             return None
 
-    async def get_notification_state(self, user_id: int) -> Optional[str]:
-        """
-        Get user notification state by Telegram ID
-        """
-
+    async def get_notification_state(self, user_id: int) -> Optional[bool]:
+        """Get user notification state by Telegram ID."""
         try:
             user = await self.get_user(user_id)
-            if user:
-                return user.notification_state
-            return None
+            return user.notification_state if user else None
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error getting notification state for user {user_id}: {e}")
             return None
 
     async def update_notification_state(
         self, user_id: int, notification_state: bool
     ) -> bool:
-        """
-        Set user notification state by Telegram ID. Returns True if success, False otherwise
-        """
-
+        """Set user notification state by Telegram ID."""
         try:
-            user = await self.get_user(user_id)
-            if user:
-                user.notification_state = notification_state
-                await self.session.commit()
-                return True
-            return False
+            stmt = (
+                update(User)
+                .where(User.tg_id == user_id)
+                .values(notification_state=notification_state)
+            )
+            result = await self.session.execute(stmt)
+            await self.session.commit()
+            return result.rowcount > 0
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error updating notification state for user {user_id}: {e}")
             await self.session.rollback()
             return False
 
     async def get_all_users_in_group(
-        self, group: str, ignore_notification=False
-    ) -> list[User]:
-        """
-        Get all users from a certain group. Returns a list of User objects
-        """
-
+        self, group: str, ignore_notification: bool = False
+    ) -> List[User]:
+        """Get all users from a certain group."""
         try:
-            if ignore_notification:
-                result = await self.session.execute(
-                    select(User).where(User.group == group)
-                )
-            else:
-                result = await self.session.execute(
-                    select(User).where(User.group == group, User.notification_state)
-                )
+            stmt = select(User).where(User.group == group)
 
+            if not ignore_notification:
+                stmt = stmt.where(User.notification_state)
+
+            result = await self.session.execute(stmt)
             return result.scalars().all()
         except SQLAlchemyError as e:
-            log.error(e)
-            return None
+            log.error(f"Error getting users for group {group}: {e}")
+            return []
 
     # region schedule methods
+
     async def save_schedule(
         self,
         group: str,
@@ -118,20 +103,9 @@ class Database:
         url: str,
         file_type: str,
         schedule_type: str = ScheduleType.REGULAR.value,
-    ) -> Schedule:
-        """General method for saving schedule
+    ) -> Optional[Schedule]:
+        """General method for saving schedule."""
 
-
-        Args:
-            group (str): Group name
-            date (str): Schedule date
-            url (str): Schedule URL (VK)
-            file_type (str): Used for bot proper file sending. One of: 'photo' | 'doc'.
-            schedule_type (str, optional): Type of schedule, can be modified or regular. Modified type has more priority. Defaults to ScheduleType.REGULAR.value.
-
-        Returns:
-            Schedule: The new schedule object
-        """
         try:
             if file_type not in ("photo", "doc"):
                 raise ValueError("file_type must be 'photo' or 'doc'")
@@ -147,87 +121,43 @@ class Database:
             self.session.add(schedule)
             await self.session.commit()
             return schedule
-        except SQLAlchemyError as e:
-            log.error(e)
+        except (SQLAlchemyError, ValueError) as e:
+            log.error(f"Error saving schedule for group {group} on {date}: {e}")
             await self.session.rollback()
             return None
 
     async def get_schedule(self, group: str, date: datetime.date) -> Optional[Schedule]:
-        """General method for getting schedule. Returns the modified schedule if it exists
-
-        Args:
-            group (str): group name
-            date (datetime.date): date of the schedule
-
-        Returns:
-            Optional[Schedule]: Schedule if found, otherwise None
         """
-
+        Get schedule for a specific date, prioritizing modified schedules.
+        """
         try:
-            # сначала чекает измену  в расписании
-            result = await self.session.execute(
-                select(Schedule).where(
-                    Schedule.group == group,
-                    Schedule.date == date,
-                    Schedule.schedule_type == ScheduleType.MODIFIED.value,
-                )
+            # Assuming 'modified' > 'regular' alphabetically, so order by desc gives priority.
+            stmt = (
+                select(Schedule)
+                .where(Schedule.group == group, Schedule.date == date)
+                .order_by(desc(Schedule.schedule_type))
+                .limit(1)
             )
-            schedule = result.scalar_one_or_none()
-
-            if not schedule:
-                result = await self.session.execute(
-                    select(Schedule).where(
-                        Schedule.group == group,
-                        Schedule.date == date,
-                        Schedule.schedule_type == ScheduleType.REGULAR.value,
-                    )
-                )
-                schedule = result.scalar_one_or_none()
-
-            return schedule
+            result = await self.session.execute(stmt)
+            return result.scalar_one_or_none()
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error getting schedule for group {group} on {date}: {e}")
             return None
 
     async def get_tomorrow_schedule(self, group: str) -> Optional[Schedule]:
-        """Shortcut for get_schedule(group, get_tomorrow_date())
-
-        Args:
-            group (str): group name
-
-        Returns:
-            Optional[Schedule]: The new schedule object
-        """
-
+        """Shortcut for get_schedule(group, get_tomorrow_date())"""
         return await self.get_schedule(group, get_tomorrow_date())
 
     async def get_today_schedule(self, group: str) -> Optional[Schedule]:
-        """Shortcut for get_schedule(group, get_today_date())
-
-        Args:
-            group (str): group name
-
-        Returns:
-            Optional[Schedule]: The new schedule object
-        """
-
+        """Shortcut for get_schedule(group, get_today_date())"""
         return await self.get_schedule(group, get_today_date())
 
-    async def update_schedule(self, group: str, date: str, url: str) -> Schedule:
-        """Updates `URL` of the certain schedule. The new `URL` must match to the `file_type` of its schedule
-
-
-        Args:
-            group (str): The group of the schedule that needs to be updated
-            date (str): The date of the schedule that needs to be updated
-            url (str): URL Link to the new schedule
-
-
-        Returns:
-            Schedule: The updated schedule object
-        """
+    async def update_schedule(
+        self, group: str, date: datetime.date, url: str
+    ) -> Optional[Schedule]:
+        """Updates `URL` of a schedule, marking it as modified."""
         try:
-            result = await self.session.execute(
+            stmt = (
                 update(Schedule)
                 .where(
                     Schedule.group == group,
@@ -236,16 +166,14 @@ class Database:
                         [ScheduleType.REGULAR.value, ScheduleType.MODIFIED.value]
                     ),
                 )
-                .values(
-                    url=url,
-                    schedule_type=ScheduleType.MODIFIED.value,
-                )
+                .values(url=url, schedule_type=ScheduleType.MODIFIED.value)
             )
-
+            await self.session.execute(stmt)
             await self.session.commit()
-            return result
+            # Return the updated schedule
+            return await self.get_schedule(group, date)
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error updating schedule for group {group} on {date}: {e}")
             await self.session.rollback()
             return None
 
@@ -254,124 +182,136 @@ class Database:
     # region rings
 
     async def get_ring_schedule(
-        self, group: str, type: ScheduleType = ScheduleType.DEFAULT_RING.value
+        self, group: str, schedule_type: ScheduleType = ScheduleType.DEFAULT_RING
     ) -> Optional[Schedule]:
-        """Get ring schedule
-
-        Args:
-            group (str): user group
-            type (ScheduleType, optional): RING Schedule is used to get tomorrow r. shedule. DEFAULT RING for general. Defaults to ScheduleType.DEFAULT_RING.value.
-
-        Returns:
-            Optional[Schedule]: _description_
+        """
+        Get ring schedule.
+        - `RING`: for tomorrow's ring schedule.
+        - `DEFAULT_RING`: for the default ring schedule.
         """
         try:
-            if type == ScheduleType.RING.value:
-                result = await self.session.execute(
-                    select(Schedule).where(
-                        Schedule.group == group,
-                        Schedule.date == get_tomorrow_date(),
-                        Schedule.schedule_type == type,
-                    )
-                )
-            elif type == ScheduleType.DEFAULT_RING.value:
-                result = await self.session.execute(
-                    select(Schedule).where(
-                        Schedule.group == group,
-                        Schedule.schedule_type == type,
-                    )
-                )
+            stmt = select(Schedule).where(
+                Schedule.group == group, Schedule.schedule_type == schedule_type.value
+            )
+            if schedule_type == ScheduleType.RING:
+                stmt = stmt.where(Schedule.date == get_tomorrow_date())
 
-            schedule = result.scalar()
-
-            return schedule
-
+            result = await self.session.execute(stmt)
+            return result.scalar_one_or_none()
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error getting ring schedule for group {group}: {e}")
             return None
 
     async def save_ring_schedule(
         self,
         group: str,
-        date: str,
         url: str,
-        type: ScheduleType = ScheduleType.RING.value,
-    ) -> Schedule:
-        await self.save_schedule(group, date, url, type)
+        schedule_type: ScheduleType,
+        date: Optional[datetime.date] = None,
+    ) -> Optional[Schedule]:
+        """Saves a ring schedule, assuming file_type is 'photo'."""
+        if schedule_type == ScheduleType.RING and date is None:
+            log.error("Date is required for RING schedule type")
+            return None
 
-    async def update_ring_schedule(
-        self,
-        group: str,
-        url: str,
-    ) -> Schedule:
         return await self.save_schedule(
-            group, get_today_date(), url, ScheduleType.RING.value
+            group=group,
+            date=date.isoformat() if date else None,
+            url=url,
+            file_type="photo",
+            schedule_type=schedule_type.value,
         )
+
+    async def update_ring_schedule(self, group: str, url: str) -> Optional[Schedule]:
+        """
+        Updates the ring schedule for tomorrow (upsert).
+        If a ring schedule for tomorrow exists, it's updated. If not, a new one is created.
+        """
+        try:
+            tomorrow = get_tomorrow_date()
+            stmt = select(Schedule).where(
+                Schedule.group == group,
+                Schedule.date == tomorrow,
+                Schedule.schedule_type == ScheduleType.RING.value,
+            )
+            result = await self.session.execute(stmt)
+            schedule = result.scalar_one_or_none()
+
+            if schedule:
+                schedule.url = url
+                await self.session.commit()
+                return schedule
+            else:
+                return await self.save_ring_schedule(
+                    group=group,
+                    url=url,
+                    date=tomorrow,
+                    schedule_type=ScheduleType.RING,
+                )
+        except SQLAlchemyError as e:
+            log.error(f"Error updating ring schedule for group {group}: {e}")
+            await self.session.rollback()
+            return None
 
     # endregion
 
-    # region temp schedule До проверки
-
+    # region temp schedule
     async def save_temp_schedule(
-        self, group: str, file_type: str, files_url: str
-    ) -> TempSchedule:
+        self, group: str, file_type: str, files_urls: List[str]
+    ) -> Optional[TempSchedule]:
+        """
+        Saves a temporary schedule. The list of file URLs is stored as a JSON string.
+        """
         try:
             temp_schedule = TempSchedule(
                 group=group,
                 file_type=file_type,
-                files_url=files_url,  # todo чтобы хрнаить списком нужно json.dumps(files_url) и какой-то мусор чтобы список был
+                files_url=json.dumps(files_urls),
             )
 
             self.session.add(temp_schedule)
             await self.session.commit()
-            # Remove refresh to avoid issues with closed session
-            # await self.session.refresh(temp_schedule)
 
             return temp_schedule
         except SQLAlchemyError as e:
-            log.error(e)
-
-            if not self.session.in_transaction():
-                await self.session.rollback()
+            log.error(f"Error saving temp schedule for group {group}: {e}")
+            await self.session.rollback()
             return None
 
     async def get_temp_schedule(self, temp_id: int) -> Optional[TempSchedule]:
+        """
+        Gets a temporary schedule. The `files_url` will be a JSON string.
+        """
         try:
             result = await self.session.execute(
                 select(TempSchedule).where(TempSchedule.id == temp_id)
             )
             return result.scalar_one_or_none()
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error getting temp schedule {temp_id}: {e}")
             return None
 
     async def delete_temp_schedule(self, temp_id: int) -> bool:
+        """Deletes a temporary schedule by its ID."""
         try:
-            temp_schedule = await self.get_temp_schedule(temp_id)
-
-            if temp_schedule:
-                await self.session.delete(temp_schedule)
-
-                await self.session.commit()
-
-                return True
-            return False
+            stmt = delete(TempSchedule).where(TempSchedule.id == temp_id)
+            result = await self.session.execute(stmt)
+            await self.session.commit()
+            return result.rowcount > 0
         except SQLAlchemyError as e:
-            log.error(e)
-
-            if not self.session.in_transaction():
-                await self.session.rollback()
+            log.error(f"Error deleting temp schedule {temp_id}: {e}")
+            await self.session.rollback()
             return False
 
     async def clear_temp_schedules(self) -> bool:
+        """Deletes all temporary schedules."""
         try:
-            await self.session.execute(TempSchedule.__table__.delete())
-
+            await self.session.execute(delete(TempSchedule))
             await self.session.commit()
 
             return True
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error clearing temp schedules: {e}")
             await self.session.rollback()
             return False
 
@@ -379,36 +319,26 @@ class Database:
 
     # region MAX Forwarding Messages
 
-    async def update_user_max_state(self, user_id: int, state: bool) -> bool:
+    async def update_user_max_token(self, user_id: int, token: str) -> bool:
+        """Set user MAX token"""
         try:
-            user = await self.get_user(user_id)
-
-            if not user:
-                return False
-
-            user.can_subscribe_max = state
+            stmt = (
+                update(User).where(User.tg_id == user_id).values(max_short_token=token)
+            )
+            result = await self.session.execute(stmt)
             await self.session.commit()
-
-            return True
+            return result.rowcount > 0
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error updating MAX state for user {user_id}: {e}")
             await self.session.rollback()
             return False
 
     # - - - TELEGRAM
 
-    async def add_connected_group(
+    async def create_connected_group(
         self, tg_id: int, title: str, creator_id: int
-    ) -> GGroup:
-        """Save subscribed group
-
-        Args:
-            tg_id (int): Telegram group ID
-            title (str): Telegram group name
-
-        Returns:
-            GGroup: New created group, Returns if Group successfully added
-        """
+    ) -> Optional[GGroup]:
+        """Save subscribed group."""
         try:
             group = GGroup(group_link=tg_id, title=title, created_user_id=creator_id)
 
@@ -416,86 +346,48 @@ class Database:
             await self.session.commit()
             return group
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error creating connected group {tg_id}: {e}")
+            await self.session.rollback()
             return None
 
     async def remove_connected_group(self, tg_id: int) -> bool:
-        """Remove subscribed group
-
-        Args:
-            tg_id (int): Telegram group ID
-            title (str): Telegram group name
-
-        Returns:
-            bool: True if success, False otherwise
-
-        """
+        """Remove subscribed group."""
         try:
-            if group := await self.get_connected_group(tg_id):
-                await self.session.delete(group)
-
-                await self.session.commit()
-                return True
-            else:
-                return False
+            stmt = delete(GGroup).where(GGroup.group_link == tg_id, not GGroup.is_max)
+            result = await self.session.execute(stmt)
+            await self.session.commit()
+            return result.rowcount > 0
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error removing connected group {tg_id}: {e}")
+            await self.session.rollback()
             return False
 
-    async def get_connected_groups_list(self) -> list[GGroup]:
-        """Get subscribed group list
-
-        Returns:
-            list[FGroup]: List of all connected groups
-        """
+    async def get_connected_groups_list(self) -> List[GGroup]:
+        """Get subscribed group list."""
         try:
-            result = await self.session.execute(select(GGroup))
-
-            if result is None:
-                return None
-
+            result = await self.session.execute(select(GGroup).where(not GGroup.is_max))
             return result.scalars().all()
         except SQLAlchemyError as e:
-            log.error(e)
-            return None
+            log.error(f"Error getting connected groups list: {e}")
+            return []
 
     async def get_connected_group(self, tg_id: int) -> Optional[GGroup]:
-        """Get subscribed group by Telegram ID
-
-        Args:
-            tg_id (int): Group Telegram ID
-
-
-        Returns:
-            Optional[FGroup]: The group object if found, otherwise None
-        """
-
+        """Get subscribed group by Telegram ID."""
         try:
             result = await self.session.execute(
-                select(GGroup).where(GGroup.group_link == tg_id)
+                select(GGroup).where(GGroup.group_link == tg_id, not GGroup.is_max)
             )
-
             return result.scalar_one_or_none()
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error getting connected group {tg_id}: {e}")
             return None
 
     # - - - MAX
 
-    async def max_add_listening_chat(
+    async def create_max_listening_chat(
         self, max_chat_id: int, max_chat_title: str, connected_group_id: int
-    ) -> bool:
-        """Set given chat as listening and then forward all incoming messages to the Telegrams groups
-
-        Args:
-            max_chat_id (int): Link of a listening chat
-            max_chat_title (str): Title of a listening chat
-            connected_group_id (int): ID of a connected Telegram group
-
-        Returns:
-            bool: True if success, False otherwise
-        """
-
+    ) -> Optional[GGroup]:
+        """Set given chat as listening."""
         try:
             group = GGroup(
                 group_link=max_chat_id,
@@ -508,56 +400,34 @@ class Database:
             await self.session.commit()
             return group
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error creating MAX listening chat {max_chat_id}: {e}")
+            await self.session.rollback()
             return None
 
-    async def max_remove_listening_chat(self, max_chat_id: int) -> bool:
-        """Remove given chat from listening
-
-        Args:
-            max_chat_id (int): Link of a listening chat
-
-        Returns:
-            bool: True if success, False otherwise
-        """
-
+    async def remove_max_listening_chat(self, max_chat_id: int) -> bool:
+        """Remove given chat from listening."""
         try:
-            if group := await self.max_get_listening_chat(max_chat_id):
-                await self.session.delete(group)
-
-                await self.session.commit()
-                return True
-            else:
-                return False
+            stmt = delete(GGroup).where(GGroup.group_link == max_chat_id, GGroup.is_max)
+            result = await self.session.execute(stmt)
+            await self.session.commit()
+            return result.rowcount > 0
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error removing MAX listening chat {max_chat_id}: {e}")
+            await self.session.rollback()
             return False
 
-    async def max_get_avaible_chats(self) -> list[int]:
-        """Get all available to listen chats and their links
-
-        Returns:
-            list[int]: Links of each listening chat
-        """
-
+    async def get_max_available_chats(self) -> List[GGroup]:
+        """Get all available to listen chats."""
         try:
             result = await self.session.execute(select(GGroup).where(GGroup.is_max))
 
             return result.scalars().all()
         except SQLAlchemyError as e:
-            log.error(e)
-            return None
+            log.error(f"Error getting available MAX chats: {e}")
+            return []
 
-    async def max_get_listening_chat(self, max_chat_id: int) -> GGroup:
-        """Get a single listening max chat
-
-        Args:
-            max_chat_id (int): Link of a listening chat
-
-        Returns:
-            GGroup: The group if found, otherwise None
-        """
-
+    async def get_max_listening_chat(self, max_chat_id: int) -> Optional[GGroup]:
+        """Get a single listening max chat."""
         try:
             result = await self.session.execute(
                 select(GGroup).where(GGroup.group_link == max_chat_id, GGroup.is_max)
@@ -565,7 +435,12 @@ class Database:
 
             return result.scalar_one_or_none()
         except SQLAlchemyError as e:
-            log.error(e)
+            log.error(f"Error getting MAX listening chat {max_chat_id}: {e}")
             return None
+
+    async def get_max_token(self, user_id: int) -> Optional[str]:
+        """Get user's MAX token."""
+        user = await self.get_user(user_id)
+        return user.max_short_token if user else None
 
     # endregion

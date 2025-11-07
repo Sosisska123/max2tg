@@ -60,7 +60,7 @@ async def get_default_ring_schedule(db: Database, group: str) -> Optional[Schedu
     Returns:
         Optional[Schedule]: The new schedule object
     """
-    return await db.get_ring_schedule(group, ScheduleType.DEFAULT_RING.value)
+    return await db.get_ring_schedule(group, ScheduleType.DEFAULT_RING)
 
 
 async def get_ring_schedule(db: Database, group: str) -> list[Optional[Schedule], str]:
@@ -75,10 +75,10 @@ async def get_ring_schedule(db: Database, group: str) -> list[Optional[Schedule]
         list[Optional[Schedule], str]: List of the new ring schedule object and its type
     """
     ring_type = ScheduleType.RING.value
-    schedule = await db.get_ring_schedule(group, ScheduleType.RING.value)
+    schedule = await db.get_ring_schedule(group, ScheduleType.RING)
 
     if not schedule:
-        schedule = await db.get_ring_schedule(group, ScheduleType.DEFAULT_RING.value)
+        schedule = await db.get_ring_schedule(group, ScheduleType.DEFAULT_RING)
         ring_type = ScheduleType.DEFAULT_RING.value
 
     return schedule, ring_type
