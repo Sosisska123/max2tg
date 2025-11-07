@@ -9,6 +9,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from parser.client import MaxParser
 
+from callbacks.user import router as user_callback_router
+
 from handlers.admin.admin_handlers import router as admin_router
 from handlers.user import router as user_router
 from handlers.group import router as group_router
@@ -50,6 +52,7 @@ async def start() -> None:
         admin_router,
         user_router,
         group_router,
+        user_callback_router,
     )
 
     # Add throttling middleware after registration middleware

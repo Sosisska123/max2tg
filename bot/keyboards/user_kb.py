@@ -40,15 +40,14 @@ def under_post_keyboard() -> InlineKeyboardMarkup:
 
 
 def create_max_available_chats_keyboard(*groups: MAXGroup) -> InlineKeyboardMarkup:
-    ggroups = list(groups)
     builder = InlineKeyboardBuilder()
 
-    if len(ggroups) == 0:
+    if len(groups) == 0:
         builder.button(text="🚫 Empty", callback_data="max_chat_empty")
         return builder.as_markup(resize_keyboard=True)
         # ༒︎✟ϟϟ⌖𐀏
 
-    for group in ggroups:
+    for group in groups:
         builder.button(text=group.title, callback_data=f"max_chat_{group.id}")
 
     return builder.adjust(2, repeat=True).as_markup(resize_keyboard=True)

@@ -36,6 +36,7 @@ class MAXGroup(Base):
     chat_id: Mapped[int] = mapped_column(
         BigInteger, unique=True
     )  # maxs id, ex: -68956055956057
+    owner_tg_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
     title: Mapped[str] = mapped_column(String(100))  # group name
     last_message_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     messages_count: Mapped[int] = mapped_column(default=0)

@@ -296,13 +296,13 @@ class MaxClient:
                 logger.debug(f"Received message from MAX: {message}")
 
                 # Handle errors
-                if isinstance(message, str):
-                    raise Exception(f"💀 Ебучие стринг")
-
-                if message.get("payload", {}).get("error"):
+                if message.get("payload", {}).get("error", None):
                     raise Exception(
                         f"💀 Error: {message['payload']['error']}: {message['payload']['localizedMessage']}"
                     )
+
+                elif message.get("payload", None):
+                    pass
 
                 await self.process_message(message)
 

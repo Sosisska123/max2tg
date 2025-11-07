@@ -131,7 +131,7 @@ async def admin_activate_max_command(
         await message.answer(
             Phrases.group_connected_success(message.chat.title, group.created_user_id),
             reply_markup=create_max_available_chats_keyboard(
-                await db.get_list_max_available_chats()
+                await db.get_max_available_chats(user.tg_id)
             ),
         )
     else:

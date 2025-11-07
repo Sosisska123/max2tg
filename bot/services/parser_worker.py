@@ -43,6 +43,7 @@ async def listen_for_parser_messages(db_dependency: DBDependency, bot_queue, bot
                         db = Database(session=session)
 
                         await db.update_user_max_token(user_id, token_value)
+                        await db.update_user_max_permission(user_id, True)
                         await bot.send_message(user_id, Phrases.max_request_sms())
 
                 case "sms_confirmed":
@@ -58,6 +59,29 @@ async def listen_for_parser_messages(db_dependency: DBDependency, bot_queue, bot
                     if not all_message:
                         logger.error(f"Missing all_message in fetch_chats data: {data}")
                         continue
+
+                    logger.info(message)
+
+                    async with db_dependency.db_session() as session:
+                        db = Database(session=session)
+
+                        for chat in all_message.get("payload", {}).get("chats", []):
+                            chat_id = chat.get("id", None)
+                            chat_title = chat.get("title", None)
+
+                            if not chat_id or not chat_title:
+                                continue
+
+                            msgs_count = chat.get("messagesCount", None)
+                            last_msg_id = chat.get("lastMessage").get("id", None)
+
+                            await db.create_max_listening_chat(
+                                chat_id,
+                                chat_title,
+                                user_id,
+                                msgs_count,
+                                last_msg_id,
+                            )
 
                 case "send_chat_list":
                     pass
