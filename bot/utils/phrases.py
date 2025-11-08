@@ -9,7 +9,7 @@ class Phrases:
 
     @staticmethod
     def success() -> str:
-        return "✅ Register success"
+        return "✅ Регистрациия пройдена"
 
     @staticmethod
     def already_registered() -> str:
@@ -35,61 +35,49 @@ class Phrases:
 
     @staticmethod
     def max_forwarded_message_template(
-        max_chat: str, username: str, text: str, reply_message_id: int = None
+        username: str, text: str, reply_message_id: int = None
     ) -> str:
         return (
-            f"<b>{max_chat} | {username}</b>: {text}"
+            f"{username}</b>: {text}"
             if reply_message_id is None
             else f"<b>{username}</b>: {text}\n<i>Reply to {reply_message_id}</i>"
         )
 
     @staticmethod
     def group_connected_success(group_name: str, creator_id: int) -> str:
-        return f"✅ Group <b>{group_name}</b> has successfully connected. Creator ID: <code>{creator_id}</code>\nNow select the <b>MAX</b> chat to listen to:"
+        return f"✅ Группа <b>{group_name}</b> подписана. ID создателя: <code>{creator_id}</code>\Теперь выберите чат <b>MAX из</b> которого будут пересылаться сообщения:"
 
     @staticmethod
     def group_disconnected_success(group_name: str) -> str:
-        return f"❌ Group <b>{group_name}</b> has successfully disconnected"
+        return f"❌ Группа <b>{group_name}</b> успешна отписана"
 
     @staticmethod
     def select_max_chat() -> str:
-        return "Select the <i>MAX</i> chat to listen to:"
+        return "Выберите <i>MAX</i> чат из которого будут пересылаться сообщения:"
 
     @staticmethod
     def max_chat_connected_success(chat_name: str) -> str:
-        return f"✅ MAX chat <b>{chat_name}</b> has successfully connected"
+        return f"✅ MAX чат <b>{chat_name}</b> успешно подписан"
 
     @staticmethod
     def max_chat_disconnected_success(chat_name: str) -> str:
-        return f"❌ MAX chat <b>{chat_name}</b> has successfully disconnected."
+        return f"❌ MAX чат <b>{chat_name}</b> успешно отписан"
 
     @staticmethod
     def max_chat_already_connected(chat_name: str) -> str:
-        return f"⚠️ MAX chat <b>{chat_name}</b> already connected."
+        return f"⚠️ MAX чат <b>{chat_name}</b> уже подписан."
 
     @staticmethod
     def max_chat_never_connected(chat_name: str) -> str:
-        return f"⚠️ MAX chat <b>{chat_name}</b> never connected."
-
-    @staticmethod
-    def max_chat_list(chats: list) -> str:
-        if not chats:
-            return "No MAX chats connected."
-        return "Connected MAX chats:\n" + "\n".join(
-            [f"- <b>{chat}</b>" for chat in chats]
-        )
-
-    @staticmethod
-    def max_chat_not_found() -> str:
-        return "⚠️ MAX chat not found."
+        return f"⚠️ MAX чат <b>{chat_name}</b> не подписан"
 
     @staticmethod
     def max_registration_required() -> str:
-        return f"❌ Your <b>MAX</b> account is not set. <b>MAX Websocket</b> requires a phone number to login.\n\nTo continue type /{ButtonPhrases.command_max_help}"
+        return f"❌ Вы не зарегистрированы в Боте через<b>MAX</b>. <b>MAX Websocket</b> требует логин через номер телефона.\n\nЧтобы продолжить введите /{ButtonPhrases.command_max_reg}"
 
     @staticmethod
     def max_login_success() -> str:
-        return f"✅ MAX login success. Now move to your group where you want to receive notifications and type /{ButtonPhrases.command_activate_max}"
+        return f"✅ <b>MAX</b> успешно зарегистрирован. Теперь перейдите в группу, в которую должны пересылаться сообщения из MAX и введите /{ButtonPhrases.command_activate_max}"
 
     @staticmethod
     def max_login_failed() -> str:
@@ -97,29 +85,27 @@ class Phrases:
 
     @staticmethod
     def max_already_logged() -> str:
-        return "⚠️ MAX already logged in"
+        return "⚠️ MAX уже зарегистрирован"
 
     @staticmethod
     def max_phone_number_request() -> str:
-        return "Please send your phone number to login to MAX. +71234567890"
+        return "Введите существующий номер, с которого нужно войти в MAX +71234567890"
 
     @staticmethod
     def max_wait_for_phone_acception(phone_number: str) -> str:
-        return (
-            f"Your number is +7{phone_number}. ⌛ Please wait until number is verified"
-        )
+        return f"СМС отправлено на номер +7{phone_number}. ⌛ Подождите пока пройдет верификация"
 
     @staticmethod
     def max_request_sms() -> str:
-        return "✅ <b>Now please send the code you received</b>"
+        return "✅ <b>Теперь пришлите смс код</b>"
 
     @staticmethod
     def wait_for_confirmation() -> str:
-        return "⌛ Waiting for confirmation..."
+        return "⌛ Ожидание подтверждения..."
 
     @staticmethod
     def max_same_user_error(created_user_id: int) -> str:
-        return f"⚠️ This group was subscribed by <code>{created_user_id}</code>! Only the same user can unsubscribe groups and chats"
+        return f"⚠️ Эта группа подписана <code>{created_user_id}</code>! только тот, кто подписал группу может ее отписать"
 
     # endregion
 
