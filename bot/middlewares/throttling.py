@@ -38,15 +38,6 @@ class ThrottlingMiddleware(BaseMiddleware):
             if user in self.config.bot.admins:
                 return await handler(event, data)
 
-            # Check if user is registered (for all other commands)
-            # registered_user = await db.get_user(event.from_user.id)
-            # if not registered_user:
-            #     if hasattr(event, "answer"):
-            #         await event.answer(Phrases.registration_required())
-            #     elif hasattr(event, "message"):
-            #         await event.answer(Phrases.registration_required(), show_alert=True)
-            #     return
-
             # Throttling logic
             if user in self.user_timeouts:
                 if user not in self.notified_users:

@@ -9,11 +9,10 @@ from aiogram.utils.media_group import MediaGroupBuilder
 from models.media_model import MediaModel
 from db.database import Database
 
-from keyboards.admin.admin_kb import manage_new_schedule
-from keyboards.user_kb import under_post_keyboard
+from keyboards.admin.admin_kb import manage_new_schedule_inline_kb
+from keyboards.user_kb import under_post_inline_kb
 
 from models.schedule import ScheduleType
-from models.temp_prikol import prikol
 from models.user import User
 
 from utils.date_utils import get_tomorrow_date
@@ -102,21 +101,13 @@ async def post_schedule_in_group(
     if not users:
         logger.error("There are no users in group %s", group)
 
-    if prikol.is_prikol_activated:
-        await send_paid_files_to_users(
-            bot=bot,
-            user=users,
-            file=files,
-        )
-        return
-
     await send_files_to_users(
         message=Phrases.schedule_text(get_tomorrow_date()),
         bot=bot,
         users=users,
         file_type=file_type,
         files=files,
-        reply_keyboard=under_post_keyboard(),
+        reply_keyboard=under_post_inline_kb(),
     )
 
 
@@ -156,7 +147,7 @@ async def send_rings_to_user(
         users=[user],
         file_type=file_type,
         files=files,
-        reply_keyboard=under_post_keyboard(),
+        reply_keyboard=under_post_inline_kb(),
     )
 
 
@@ -182,7 +173,7 @@ async def send_schedule_to_user(
         users=[user],
         file_type=file_type,
         files=files,
-        reply_keyboard=under_post_keyboard(),
+        reply_keyboard=under_post_inline_kb(),
     )
 
 
@@ -347,7 +338,7 @@ async def send_new_post_to_admin(
             await bot.send_message(
                 chat_id=admin,
                 text=group,
-                reply_markup=manage_new_schedule(temp_schedule_id),
+                reply_markup=manage_new_schedule_inline_kb(temp_schedule_id),
             )
 
             create_job(bot, db, temp_schedule_id, msg)
@@ -359,7 +350,7 @@ async def send_new_post_to_admin(
                 caption=group,
                 chat_id=admin,
                 document=files,
-                reply_markup=manage_new_schedule(temp_schedule_id),
+                reply_markup=manage_new_schedule_inline_kb(temp_schedule_id),
             )
 
             create_job(bot, db, temp_schedule_id, msg)
@@ -369,7 +360,7 @@ async def send_new_post_to_admin(
                 caption=group,
                 chat_id=admin,
                 photo=files,
-                reply_markup=manage_new_schedule(temp_schedule_id),
+                reply_markup=manage_new_schedule_inline_kb(temp_schedule_id),
             )
 
             create_job(bot, db, temp_schedule_id, msg)
@@ -391,7 +382,7 @@ async def send_paid_files_to_users(
                 caption=Phrases.schedule_text(
                     get_tomorrow_date() if date is None else date
                 ),
-                reply_markup=under_post_keyboard(),
+                reply_markup=under_post_inline_kb(),
             )
         return
 
@@ -400,7 +391,7 @@ async def send_paid_files_to_users(
         stars_count,
         [photos],
         caption=Phrases.schedule_text(get_tomorrow_date() if date is None else date),
-        reply_markup=under_post_keyboard(),
+        reply_markup=under_post_inline_kb(),
     )
 
 

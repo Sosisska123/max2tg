@@ -7,13 +7,13 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from parser.client import MaxParser
+from max.client import MaxParser
 
 from callbacks.user import router as user_callback_router
 
 from handlers.admin.admin_handlers import router as admin_router
 from handlers.user import router as user_router
-from handlers.group import router as group_router
+from handlers.max import router as max_router
 
 from db.database import init_db
 from db.db_dependency import DBDependency
@@ -25,13 +25,6 @@ from settings import config
 from services.parser_worker import listen_for_parser_messages
 
 dp = Dispatcher()
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    datefmt=config.logging.date_format,
-    format=config.logging.log_format,
-)
 
 
 async def start() -> None:
@@ -51,7 +44,7 @@ async def start() -> None:
     dp.include_routers(
         admin_router,
         user_router,
-        group_router,
+        max_router,
         user_callback_router,
     )
 
@@ -70,14 +63,3 @@ async def start() -> None:
 
     await bot.delete_webhook(True)
     await dp.start_polling(bot, parser=parser)
-
-
-if __name__ == "__main__":
-    try:
-        logging.info("================ Бот запущен ================")
-        asyncio.run(start())
-    except KeyboardInterrupt:
-        logging.info("================ Бот остановлен ================")
-
-    except Exception as e:
-        logging.error(f"Ошибка {e}", exc_info=True)

@@ -8,17 +8,14 @@ from aiogram.fsm.context import FSMContext
 from db.database import Database
 
 from filters.is_admin import IsAdmin
-from keyboards.admin.admin_kb import main_admin_panel
+from keyboards.admin.admin_kb import main_admin_inline_kb
 
 from models.schedule import ScheduleType
-from models.temp_prikol import prikol
 
 from utils.date_utils import get_tomorrow_date
 from services.mailing_manager import send_new_post_to_admin, send_files_to_users
 from utils.phrases import AdminPhrases, ErrorPhrases
 from utils.states import LoadScheduleFsm
-
-# from vk.vk_schedule import stop_parsing_jobs
 
 from services.schedule import save_ring_schedule
 
@@ -32,7 +29,7 @@ logger = logging.getLogger(__name__)
 async def admin_panel_command(message: Message) -> None:
     await message.reply(
         AdminPhrases.admin_panel,
-        reply_markup=main_admin_panel(),
+        reply_markup=main_admin_inline_kb(),
     )
 
 
@@ -44,12 +41,16 @@ async def admin_panel_command(message: Message) -> None:
     F.text.startswith(AdminPhrases.load_schedule_command),
     IsAdmin(),
 )
-async def load_schedule_select_group_command(
+async def admin_load_schedule(
     message: Message, state: FSMContext, command: CommandObject
 ):
     await state.set_state(LoadScheduleFsm.load_file)
 
     args = command.args.split()
+
+    if len(args) < 2:
+        await message.reply(ErrorPhrases.length_error())
+        return
 
     group = args[0].lower()
     load_type = args[1].lower()
@@ -68,7 +69,9 @@ async def load_schedule_select_group_command(
     IsAdmin(),
     LoadScheduleFsm.load_file,
 )
-async def load_schedule_load_file(message: Message, db: Database, state: FSMContext):
+async def admin_load_schedule_load_file(
+    message: Message, db: Database, state: FSMContext
+):
     data = await state.get_data()
 
     group = data.get("group")
@@ -114,7 +117,7 @@ async def load_schedule_load_file(message: Message, db: Database, state: FSMCont
 
 
 @router.message(Command(AdminPhrases.command_add_ring_schedule), IsAdmin())
-async def admin_add_ring_schedule_command(
+async def admin_add_ring_schedule(
     message: Message, state: FSMContext, command: CommandObject
 ) -> None:
     """
@@ -158,28 +161,14 @@ async def admin_add_ring_schedule_load_command(
         await save_ring_schedule(db, "нпк", get_tomorrow_date(), url)
 
     else:
-        await message.reply(ErrorPhrases.invalid(), reply_markup=main_admin_panel())
+        await message.reply(ErrorPhrases.invalid(), reply_markup=main_admin_inline_kb())
         return
 
-    await message.answer("✅ rings schedule added", reply_markup=main_admin_panel())
+    await message.answer("✅ rings schedule added", reply_markup=main_admin_inline_kb())
     await state.clear()
 
 
 # endregion
-
-
-@router.message(Command(AdminPhrases.command_prikol), IsAdmin())
-async def admin_prikol_command(message: Message) -> None:
-    """
-    Make a sending schedule paid
-    """
-
-    prikol.is_prikol_activated = not prikol.is_prikol_activated
-
-    if prikol.is_prikol_activated:
-        await message.answer("✅ Prikol activated")
-    else:
-        await message.answer("❌ Prikol deactivated")
 
 
 @router.message(Command(AdminPhrases.command_mail_everyone), IsAdmin())
@@ -207,7 +196,7 @@ async def admin_mail_everyone_command(
         args[1],
     )
 
-    ignore_notification = args[2] if len(args) > 2 else False
+    ignore_notification = args[2] if args[2] else False
 
     await send_files_to_users(
         message=msg,
@@ -224,17 +213,6 @@ async def admin_var_list_command(message: Message) -> None:
 @router.message(Command(AdminPhrases.command_set_var), IsAdmin())
 async def admin_set_var_command(message: Message) -> None:
     pass
-
-
-# @router.message(Command(AdminPhrases.command_clear_jobs), IsAdmin())
-# async def admin_clear_jobs_command(message: Message) -> None:
-#     """
-#     Clear all jobs
-#     """
-
-#     stop_parsing_jobs()
-
-#     await message.answer("✅ jobs cleared")
 
 
 @router.message(Command(AdminPhrases.command_list), IsAdmin())
@@ -263,14 +241,21 @@ async def admin_add_user_command(
         return
 
     try:
-        await db.create_user(
+        user = await db.create_user(
             args[0].lower(),
             args[2],
             args[1].lower(),
         )
-        await message.answer(
-            "✅ User successfully added", reply_markup=main_admin_panel()
-        )
+
+        if user:
+            await message.answer(
+                "✅ User successfully added", reply_markup=main_admin_inline_kb()
+            )
+
+        else:
+            await message.answer(
+                "❌ User already exists", reply_markup=main_admin_inline_kb()
+            )
 
     except TypeError as e:
         await message.reply(ErrorPhrases.invalid())
@@ -282,9 +267,7 @@ async def admin_add_user_command(
 
 
 @router.message(Command(AdminPhrases.command_list_subscribed_groups_max), IsAdmin())
-async def admin_max_subscribed_groups_max_command(
-    message: Message, db: Database
-) -> None:
+async def admin_max_get_subscribed_groups(message: Message, db: Database) -> None:
     """
     List all subscribed Telegram groups
     """

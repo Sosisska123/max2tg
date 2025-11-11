@@ -1,17 +1,15 @@
 from pathlib import Path
 
-from typing import List, Literal
-
-# from functools import lru_cache
+from typing import List
 
 from pydantic import BaseModel, SecretStr, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
 
 
 LOG_DEFAULT_FORMAT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
-WORKER_LOG_DEFAULT_FORMAT = "[%(asctime)s.%(msecs)03d][%(processName)s] %(module)16s:%(lineno)-3d %(levelname)-7s - %(message)s"
+DATE_DEFAULT_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).parent
 yaml_file_path = str(BASE_DIR / "shared" / "config.yaml")
 env_file_path = str(BASE_DIR / "shared" / ".env")
 
@@ -31,15 +29,8 @@ class BotSettings(BaseModel):
 
 
 class LoggingConfig(BaseModel):
-    log_level: Literal[
-        "debug",
-        "info",
-        "warning",
-        "error",
-        "critical",
-    ] = "info"
-    log_format: str = LOG_DEFAULT_FORMAT
-    date_format: str = "%Y-%m-%d %H:%M:%S"
+    log_format: str = Field(..., alias="format")
+    date_format: str = Field(...)
 
 
 class Settings(BaseSettings):
@@ -51,8 +42,7 @@ class Settings(BaseSettings):
     )
 
     bot: BotSettings
-
-    logging: LoggingConfig = LoggingConfig()
+    logging: LoggingConfig
 
     @classmethod
     def settings_customise_sources(cls, settings_cls, **kwargs):
@@ -72,12 +62,3 @@ class EnvSettings(BaseSettings):
 
 config = Settings()
 env = EnvSettings()
-
-# @lru_cache(maxsize=1)
-# def get_config() -> Settings:
-#     return Settings()
-
-
-# @lru_cache(maxsize=1)
-# def get_env() -> EnvSettings:
-#     return EnvSettings()

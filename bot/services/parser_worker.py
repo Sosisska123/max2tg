@@ -75,12 +75,12 @@ async def listen_for_parser_messages(db_dependency: DBDependency, bot_queue, bot
                             msgs_count = chat.get("messagesCount", None)
                             last_msg_id = chat.get("lastMessage").get("id", None)
 
-                            await db.create_max_listening_chat(
-                                chat_id,
-                                chat_title,
-                                user_id,
-                                msgs_count,
-                                last_msg_id,
+                            await db.store_user_max_chat(
+                                chat_id=chat_id,
+                                chat_title=chat_title,
+                                owner_tg_id=user_id,
+                                messages_count=msgs_count,
+                                last_message_id=last_msg_id,
                             )
 
                 case "send_chat_list":

@@ -1,3 +1,4 @@
+# inspired by
 # https://n0paste.eu/9N5uYA6/
 # https://github.com/nsdkinx/vkmax/
 
@@ -11,7 +12,7 @@ from typing import Any, Callable, Optional
 
 from functools import wraps
 
-from parser.templates.payloads import (
+from templates.payloads import (
     get_ping_json,
     get_useragent_header_json,
     get_token_json,
@@ -22,9 +23,8 @@ from parser.templates.payloads import (
     get_check_code_json,
 )
 
-
-from parser.utils.date import get_unix_now
-from .config import config
+from utils.date import get_unix_now
+from config import config
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,42 +51,46 @@ class MaxClient:
         bot_queue: asyncio.Queue,
         tg_user_id: int,
         token: str = None,
-        proxy: str = None,
+        proxy: str | bool = True,
     ):
-        self.websocket: Optional[websockets.WebSocketClientProtocol] = None
+        self.websocket: Optional[websockets.ClientConnection] = None
         self.token = token
-        self.seq = itertools.count(0, 1)
-        self.ws_url = config.ws_url
         self.bot_queue = bot_queue
         self.proxy = proxy
         self.tg_user_id = tg_user_id
 
+        self._ws_url = config.ws_url
+        self._seq = 0
         self._counter = itertools.count(0, 1)
         self._current_listening_chat: Optional[str] = None
         self._ping_task: Optional[asyncio.Task] = None
         self._chat_subscription_ping_task: Optional[asyncio.Task] = None
         self._recv_task: Optional[asyncio.Task] = None
 
-    async def connect(self, without_token: bool = False):
-        """Connect to the MAX websocket server and perform the handshake"""
+    async def connect(self, auth_with_token: bool = False):
+        """
+        Connect to the MAX websocket server and perform the handshake
+        You'll get a token if you are logging for the first time
+        Next time token will be used automatically
+        """
 
         if self.websocket:
             raise Exception("Already connected")
 
-        logger.info("⌛ Connecting to MAX websocket...")
+        logger.info("⌛ Trying to connect to MAX websocket...")
 
         try:
             self.websocket = await websockets.connect(
-                self.ws_url,
+                self._ws_url,
                 origin=websockets.Origin("https://web.max.ru"),
-                # proxy=self.proxy if self.proxy else True,
+                proxy=self.proxy,
             )
 
-            if not without_token:
+            if auth_with_token:
                 await self._handshake()
             else:
                 await self.websocket.send(get_useragent_header_json())
-                self.seq = next(self._counter)
+                self._seq = next(self._counter)
 
             logger.info("✅ Connected to MAX websocket")
 
@@ -158,8 +162,8 @@ class MaxClient:
         Subscribe or unsubscribe from a chat"""
 
         logger.debug("Start/stop pinging to chat %s... | state: %s", chat_id, state)
-        await self.websocket.send(get_subscribe_json(state, chat_id, self.seq))
-        self.seq = next(self._counter)
+        await self.websocket.send(get_subscribe_json(state, chat_id, self._seq))
+        self._seq = next(self._counter)
 
     @ensure_connected
     async def read_last_message(self, chat_id: int, message_id: str):
@@ -171,33 +175,33 @@ class MaxClient:
             message_id,
         )
         await self.websocket.send(
-            get_read_last_message_json(chat_id, message_id, get_unix_now(), self.seq)
+            get_read_last_message_json(chat_id, message_id, get_unix_now(), self._seq)
         )
-        self.seq = next(self._counter)
+        self._seq = next(self._counter)
 
     @ensure_connected
     async def get_messages_from_chat(self, chat_id: int):
         """Get messages from a chat. It sends only when the chat was opened for the first time"""
 
         logger.debug("Getting messages from chat %s ...", chat_id)
-        await self.websocket.send(get_messages_json(chat_id, get_unix_now(), self.seq))
-        self.seq = next(self._counter)
+        await self.websocket.send(get_messages_json(chat_id, get_unix_now(), self._seq))
+        self._seq = next(self._counter)
 
     @ensure_connected
     async def start_auth(self, phone: str):
         """Start the authentication process"""
 
         logger.debug("Starting authentication...")
-        await self.websocket.send(get_start_auth_json(phone, self.seq))
-        self.seq = next(self._counter)
+        await self.websocket.send(get_start_auth_json(phone, self._seq))
+        self._seq = next(self._counter)
 
     @ensure_connected
     async def check_code(self, token: str, code: str):
         """Check the authentication code"""
 
         logger.debug("Verifying code... | token: %s", token)
-        await self.websocket.send(get_check_code_json(token, code, self.seq))
-        self.seq = next(self._counter)
+        await self.websocket.send(get_check_code_json(token, code, self._seq))
+        self._seq = next(self._counter)
 
     @ensure_connected
     async def process_message(self, message: dict[str, Any]):
@@ -269,16 +273,19 @@ class MaxClient:
             raise ValueError("Need to set token first")
 
         await self.websocket.send(get_token_json(self.token))
-        self.seq = next(self._counter)
+        self._seq = next(self._counter)
 
     @ensure_connected
     async def _handshake(self):
-        """Perform the initial handshake with the MAX websocket server"""
+        """Perform the initial handshake with the MAX websocket server with user provided token"""
+
+        if not self.token:
+            raise ValueError("Need to set token first")
 
         await self.websocket.send(get_useragent_header_json())
         await self.websocket.send(get_token_json(self.token))
 
-        self.seq = next(self._counter)
+        self._seq = next(self._counter)
 
     @ensure_connected
     async def _read_messages(self):
@@ -320,8 +327,8 @@ class MaxClient:
 
         while self.websocket is not None:
             await asyncio.sleep(30)
-            await self.websocket.send(get_ping_json(self.seq))
-            self.seq = next(self._counter)
+            await self.websocket.send(get_ping_json(self._seq))
+            self._seq = next(self._counter)
 
     @ensure_connected
     async def _chat_subscription_ping(self):
@@ -334,106 +341,4 @@ class MaxClient:
                 continue
 
             await self.subscribe_to_chat(self._current_listening_chat, True)
-            self.seq = next(self._counter)
-
-
-class MaxParser:
-    def __init__(self, bot_queue: asyncio.Queue):
-        self.clients: dict[str, MaxClient] = {}
-        self.bot_queue = bot_queue
-        self.parser_queue = asyncio.Queue()
-
-    async def add_client(self, tg_user_id: int, token: str):
-        """
-        Create a new MaxClient with the token and add it to the parser
-        The key is the TG User ID
-        """
-
-        if not token or not tg_user_id:
-            raise ValueError("Token cannot be empty")
-
-        if tg_user_id in self.clients:
-            raise ValueError("Client with this TG User ID already exists")
-
-        client = MaxClient(bot_queue=self.bot_queue, token=token, tg_user_id=tg_user_id)
-        await client.connect()
-        self.clients[tg_user_id] = client
-
-    async def start_auth(self, tg_user_id: int, phone_number: str):
-        """
-        To get token you need to login. an sms acception will be sent to your phone
-        The key is the TG User ID
-        """
-
-        if not phone_number or not tg_user_id:
-            raise ValueError("One of the fields is empty")
-
-        if tg_user_id in self.clients:
-            raise ValueError("Client with this TG User ID already exists")
-
-        client = MaxClient(bot_queue=self.bot_queue, tg_user_id=tg_user_id)
-
-        await client.connect(without_token=True)
-        await client.start_auth(phone_number)
-
-        self.clients[tg_user_id] = client
-
-    async def check_code(self, tg_user_id: int, short_token: str, code: str):
-        """Verify code and get token"""
-
-        if not short_token or not code or not tg_user_id:
-            raise ValueError("All fields must be filled in")
-
-        client = self.get_client(tg_user_id)
-
-        await client.check_code(short_token, code)
-
-    async def remove_client(self, tg_user_id: int):
-        """Remove a MaxClient from the parser"""
-
-        if tg_user_id not in self.clients:
-            raise ValueError("Client with this TG User ID does not exist")
-
-        del self.clients[tg_user_id]
-
-    def get_client(self, tg_user_id: int) -> Optional[MaxClient]:
-        """Get a MaxClient by its TG User ID"""
-
-        if tg_user_id not in self.clients:
-            logger.warning("Client with this TG User ID does not exist")
-            return None
-
-        return self.clients[tg_user_id]
-
-    async def listen_for_commands(self):
-        """Listen for commands from the bot and execute them."""
-
-        while True:
-            command = await self.parser_queue.get()
-            try:
-                action = command.get("action")
-                user_id = command.get("user_id", None)
-                data = command.get("data")
-
-                match action:
-                    case "start_auth":
-                        await self.start_auth(user_id, data.get("phone"))
-
-                    case "verify_code":
-                        await self.check_code(
-                            user_id, data.get("token"), data.get("code")
-                        )
-
-                    case "subscribe_to_chat":
-                        client = self.get_client(user_id)
-
-                        if not client:
-                            continue
-
-                        await client.listen_to_chat(data.get("chat_id"))
-
-            except Exception as e:
-                logger.error(f"Error while executing command from bot: {e}")
-
-            finally:
-                self.parser_queue.task_done()
+            self._seq = next(self._counter)

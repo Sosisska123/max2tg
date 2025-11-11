@@ -56,12 +56,16 @@ class Phrases:
         return "Выберите <i>MAX</i> чат из которого будут пересылаться сообщения:"
 
     @staticmethod
-    def max_chat_connected_success(chat_name: str) -> str:
+    def max_chat_connection_success(chat_name: str) -> str:
         return f"✅ MAX чат <b>{chat_name}</b> успешно подписан"
 
     @staticmethod
-    def max_chat_disconnected_success(chat_name: str) -> str:
+    def max_chat_disconnection_success(chat_name: str) -> str:
         return f"❌ MAX чат <b>{chat_name}</b> успешно отписан"
+
+    @staticmethod
+    def max_chat_connection_error(chat_name: str) -> str:
+        return f"⚠️ MAX чат <b>{chat_name}</b> не удалось подписать"
 
     @staticmethod
     def max_chat_already_connected(chat_name: str) -> str:
@@ -73,7 +77,7 @@ class Phrases:
 
     @staticmethod
     def max_registration_required() -> str:
-        return f"❌ Вы не зарегистрированы в Боте через<b>MAX</b>. <b>MAX Websocket</b> требует логин через номер телефона.\n\nЧтобы продолжить введите /{ButtonPhrases.command_max_reg}"
+        return f"❌ Вы не зарегистрированы в боте через <b>MAX</b>. <b>MAX Websocket</b> требует логин через номер телефона.\n\nЧтобы продолжить введите /{ButtonPhrases.command_max_reg}"
 
     @staticmethod
     def max_login_success() -> str:
@@ -225,7 +229,7 @@ class ErrorPhrases:
 
     @staticmethod
     def chat_already_connected(chat_name: str) -> str:
-        return f"⚠️ {chat_name.capitalize()} already connected"
+        return f"⚠️ {chat_name.capitalize()} already connected. To change connected chat use /{ButtonPhrases.command_max_reconnect}"
 
     @staticmethod
     def chat_never_connected(chat_name: str) -> str:
@@ -278,9 +282,11 @@ class ButtonPhrases:
             "Чтобы связать чат в <b>MAX</b> и группу <b>Телеграм</b>, нужен любой <b>номер телефона</b> который зарегистрирован в MAX и <b>находится в этом чате</b>\n\n"
             f"Только <b>одному</b> человеку нужно зарегистрироваться в этом боте и отправить сообщение /{ButtonPhrases.command_activate_max} в группу, <b>где уже находится этот бот</b>\n\n"
             f"/{ButtonPhrases.command_deactivate_max} — Чтобы отписать эту группу\n"
-            f"/{ButtonPhrases.command_max_delete} — Для удаления регистрации в боте"
+            f"/{ButtonPhrases.command_max_delete} — Для удаления регистрации в боте\n"
+            f"/{ButtonPhrases.command_max_reconnect} — Поменять чат для прослушивания\n"
         )
 
     command_max_help = "max_help"
     command_max_reg = "max_reg"
     command_max_delete = "max_delete"
+    command_max_reconnect = "mac_recon"

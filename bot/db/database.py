@@ -7,7 +7,7 @@ from sqlalchemy import delete, desc, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.max_groups import MAXGroup, TGGroup
+from models.max_group import Group, MaxGroupConfig
 from models.schedule import Schedule, ScheduleType
 from models.temp_schedule import TempSchedule
 from models.user import Base, User
@@ -334,7 +334,7 @@ class Database:
             return False
 
     async def update_user_max_permission(self, user_id: int, state: bool) -> bool:
-        """Set user MAX token"""
+        """Defines can user connect MAX"""
         try:
             stmt = (
                 update(User).where(User.tg_id == user_id).values(can_connect_max=state)
@@ -349,14 +349,20 @@ class Database:
 
     async def connect_tg_max(self, tg_group_id: int, max_chat_id: int) -> bool:
         try:
-            stmt = (
-                update(TGGroup)
-                .where(TGGroup.group_id == tg_group_id)
-                .values(connected_group_id=max_chat_id)
-            )
-            result = await self.session.execute(stmt)
+            group = await self.get_tg_group_by_id(tg_group_id)
+
+            if not group:
+                return False
+
+            group.connected_chat_id = max_chat_id
+
+            if group.max_config:
+                group.max_config.chat_id = max_chat_id
+            else:
+                group.max_config = MaxGroupConfig(connected_group_id=max_chat_id)
+
             await self.session.commit()
-            return result.rowcount > 0
+            return True
         except SQLAlchemyError as e:
             log.error(
                 f"Error connecting Telegram group {tg_group_id} to MAX chat {max_chat_id}: {e}"
@@ -366,14 +372,16 @@ class Database:
 
     async def disconnect_tg_max(self, tg_group_id: int) -> bool:
         try:
-            stmt = (
-                update(TGGroup)
-                .where(TGGroup.group_id == tg_group_id)
-                .values(connected_group_id=None)
-            )
-            result = await self.session.execute(stmt)
+            group = await self.get_tg_group_by_id(tg_group_id)
+
+            if not group:
+                return False
+
+            group.connected_chat_id = None
+            group.max_config.chat_id = None
+
             await self.session.commit()
-            return result.rowcount > 0
+            return True
         except SQLAlchemyError as e:
             log.error(f"Error disconnecting Telegram group {tg_group_id}: {e}")
             await self.session.rollback()
@@ -389,14 +397,15 @@ class Database:
         user = await self.get_user(user_id)
         return user.can_connect_max if user else False
 
-    # - - - TELEGRAM
-
-    async def create_tg_group(
+    async def store_tg_group(
         self, group_id: int, title: str, creator_id: int
-    ) -> Optional[TGGroup]:
-        """Save subscribed group."""
+    ) -> Optional[Group]:
+        """Save Telegram group to connect MAX to it later"""
         try:
-            group = TGGroup(group_id=group_id, title=title, created_user_id=creator_id)
+            group = Group(self_id=group_id, group_title=title, creator_id=creator_id)
+            group.max_config = MaxGroupConfig(
+                connected_group_id=group_id, owner_id=creator_id
+            )
 
             self.session.add(group)
             await self.session.commit()
@@ -409,7 +418,7 @@ class Database:
     async def remove_tg_group(self, tg_id: int) -> bool:
         """Remove subscribed group."""
         try:
-            stmt = delete(TGGroup).where(TGGroup.group_id == tg_id)
+            stmt = delete(Group).where(Group.self_id == tg_id)
             result = await self.session.execute(stmt)
             await self.session.commit()
             return result.rowcount > 0
@@ -418,101 +427,79 @@ class Database:
             await self.session.rollback()
             return False
 
-    async def get_tg_groups_list(self) -> List[TGGroup]:
-        """Admin only. Get all subscribed group list."""
+    async def get_tg_groups_list(self) -> List[Group]:
+        """Get all subscribed group list"""
         try:
-            result = await self.session.execute(select(TGGroup))
+            result = await self.session.execute(select(Group))
             return result.scalars().all()
         except SQLAlchemyError as e:
             log.error(f"Error getting connected groups list: {e}")
             return []
 
-    async def get_tg_group(self, tg_id: int) -> Optional[TGGroup]:
+    async def get_tg_group_by_id(self, tg_id: int) -> Optional[Group]:
         """Get subscribed group by Telegram ID."""
         try:
             result = await self.session.execute(
-                select(TGGroup).where(TGGroup.group_id == tg_id)
+                select(Group).where(Group.self_id == tg_id)
             )
             return result.scalar_one_or_none()
         except SQLAlchemyError as e:
             log.error(f"Error getting connected group {tg_id}: {e}")
             return None
 
-    # - - - MAX
-
-    async def create_max_listening_chat(
+    async def store_user_max_chat(
         self,
-        max_chat_id: int,
-        max_chat_title: str,
+        chat_id: int,
+        chat_title: str,
         owner_tg_id: int,
         messages_count: int = 0,
         last_message_id: int = 0,
-    ) -> Optional[MAXGroup]:
+    ) -> Optional[MaxGroupConfig]:
         """Set given chat as listening."""
         try:
             result = await self.session.execute(
-                select(MAXGroup).where(MAXGroup.chat_id == max_chat_id)
+                select(MaxGroupConfig).where(
+                    MaxGroupConfig.owner_id == owner_tg_id,
+                    MaxGroupConfig.chat_id == chat_id,
+                )
             )
             existing = result.scalar_one_or_none()
 
             if existing:
-                existing.title = max_chat_title
-                existing.messages_count = messages_count
+                existing.chat_title = chat_title
                 existing.last_message_id = last_message_id
-                existing.owner_tg_id = owner_tg_id
+                existing.messages_count = messages_count
+
                 await self.session.commit()
                 return existing
 
             else:
-                group = MAXGroup(
-                    chat_id=max_chat_id,
-                    title=max_chat_title,
-                    messages_count=messages_count,
+                group = MaxGroupConfig(
+                    owner_id=owner_tg_id,
+                    chat_id=chat_id,
+                    chat_title=chat_title,
                     last_message_id=last_message_id,
-                    owner_tg_id=owner_tg_id,
+                    messages_count=messages_count,
                 )
+
                 self.session.add(group)
                 await self.session.commit()
                 return group
         except SQLAlchemyError as e:
-            log.error(f"Error creating MAX listening chat {max_chat_id}: {e}")
+            log.error(f"Error creating MAX listening chat {chat_id}: {e}")
             await self.session.rollback()
             return None
 
-    async def remove_max_listening_chat(self, max_chat_id: int) -> bool:
-        """Remove given chat from listening."""
-        try:
-            stmt = delete(MAXGroup).where(MAXGroup.chat_id == max_chat_id)
-            result = await self.session.execute(stmt)
-            await self.session.commit()
-            return result.rowcount > 0
-        except SQLAlchemyError as e:
-            log.error(f"Error removing MAX listening chat {max_chat_id}: {e}")
-            await self.session.rollback()
-            return False
-
-    async def get_max_available_chats(self, owner_tg_id: int) -> List[MAXGroup]:
-        """Admin only. Get all added MAX chats."""
+    async def get_max_available_chats(self, owner_tg_id: int) -> List[Group]:
+        """Get all added MAX chats for a user"""
         try:
             result = await self.session.execute(
-                select(MAXGroup).where(MAXGroup.owner_tg_id == owner_tg_id)
+                select(MaxGroupConfig).where(MaxGroupConfig.owner_id == owner_tg_id)
             )
 
             return result.scalars().all()
         except SQLAlchemyError as e:
             log.error(f"Error getting available MAX chats: {e}")
             return []
-
-    async def get_max_listening_chat(self, max_chat_id: int) -> Optional[MAXGroup]:
-        """Get a single listening max chat."""
-        try:
-            result = await self.session.execute(
-                select(MAXGroup).where(MAXGroup.chat_id == max_chat_id)
-            )
-
-            return result.scalar_one_or_none()
-        except SQLAlchemyError as e:
-            log.error(f"Error getting MAX listening chat {max_chat_id}: {e}")
-            return None
 
     # endregion
