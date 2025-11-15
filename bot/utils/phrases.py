@@ -45,7 +45,7 @@ class Phrases:
 
     @staticmethod
     def group_connected_success(group_name: str, creator_id: int) -> str:
-        return f"✅ Группа <b>{group_name}</b> подписана. ID создателя: <code>{creator_id}</code>\Теперь выберите чат <b>MAX из</b> которого будут пересылаться сообщения:"
+        return f"✅ Группа <b>{group_name}</b> подписана. ID создателя: <code>{creator_id}</code>\nТеперь выберите чат <b>MAX из</b> которого будут пересылаться сообщения:"
 
     @staticmethod
     def group_disconnected_success(group_name: str) -> str:
@@ -290,3 +290,5 @@ class ButtonPhrases:
     command_max_reg = "max_reg"
     command_max_delete = "max_delete"
     command_max_reconnect = "mac_recon"
+
+    command_max_help: str = "Помощь по подключению макса"

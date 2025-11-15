@@ -2,9 +2,9 @@ import logging
 
 from aiogram import Bot
 
-from db.database import Database
-from db.db_dependency import DBDependency
-from utils.phrases import Phrases
+from bot.db.database import Database
+from bot.db.db_dependency import DBDependency
+from bot.utils.phrases import Phrases
 
 
 logger = logging.getLogger(__name__)

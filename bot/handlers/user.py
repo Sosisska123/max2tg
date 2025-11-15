@@ -4,12 +4,12 @@ from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 
-from db.database import Database
+from bot.db.database import Database
 
-from keyboards.user_kb import reply_startup_kb
-from keyboards.setup_ui import set_bot_commands
+from bot.keyboards.user_kb import reply_startup_kb
+from bot.keyboards.setup_ui import set_bot_commands
 
-from utils.phrases import ErrorPhrases, Phrases
+from bot.utils.phrases import ErrorPhrases, Phrases
 
 logger = logging.getLogger(__name__)
 router = Router()

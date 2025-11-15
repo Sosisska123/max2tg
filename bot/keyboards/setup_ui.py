@@ -5,7 +5,7 @@ from aiogram.types import (
     BotCommandScopeAllGroupChats,
 )
 
-from utils.phrases import ButtonPhrases
+from bot.utils.phrases import ButtonPhrases
 
 
 async def set_bot_commands(bot: Bot):
@@ -22,6 +22,10 @@ async def set_bot_commands(bot: Bot):
         BotCommand(
             command=ButtonPhrases.homework_command,
             description=ButtonPhrases.homework_command_desc,
+        ),
+        BotCommand(
+            command=ButtonPhrases.command_max_help,
+            description=ButtonPhrases.command_max_help_desc,
         ),
     ]
 

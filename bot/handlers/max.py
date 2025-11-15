@@ -3,27 +3,27 @@ import logging
 
 from asyncio import QueueShutDown
 
-from aiogram import F, Router
+from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 
-from keyboards.user_kb import max_available_chats_inline_kb
+from bot.keyboards.user_kb import max_available_chats_inline_kb
 
-from utils.states import LoginWithMax, SubscribeMaxChat
-from utils.phrases import ButtonPhrases, ErrorPhrases, Phrases
-from parser.client import MaxParser
+from bot.utils.states import LoginWithMax, SubscribeMaxChat
+from bot.utils.phrases import ButtonPhrases, ErrorPhrases, Phrases
 
-from db.database import Database
+from bot.db.database import Database
+
+from core.queue_manager import queue_manager
+from core.message_models import StartAuthMessage, VerifyCodeMessage
+
 
 logger = logging.getLogger(__name__)
 router = Router()
 
 
-@router.message(
-    Command(ButtonPhrases.command_activate_max),
-    F.chat.type.in_(("group", "supergroup")),
-)
+@router.message(Command(ButtonPhrases.command_activate_max))
 async def subscribe_max(message: Message, db: Database, state: FSMContext) -> None:
     """
     Mark this group as connected to the MAX forwarding
@@ -78,10 +78,7 @@ async def subscribe_max(message: Message, db: Database, state: FSMContext) -> No
     await state.set_state(SubscribeMaxChat.select_listening_chat)
 
 
-@router.message(
-    Command(ButtonPhrases.command_deactivate_max),
-    F.chat.type.in_(("group", "supergroup")),
-)
+@router.message(Command(ButtonPhrases.command_deactivate_max))
 async def unsubscribe_max(message: Message, db: Database) -> None:
     """
     Unmark this group as connected to the MAX forwarding
@@ -147,9 +144,7 @@ async def max_reg_command(message: Message, db: Database, state: FSMContext) -> 
 
 
 @router.message(LoginWithMax.phone_number)
-async def max_phone_number(
-    message: Message, state: FSMContext, parser: MaxParser
-) -> None:
+async def max_phone_number(message: Message, state: FSMContext) -> None:
     try:
         if not message.text:
             raise ValueError("No text provided")
@@ -163,13 +158,8 @@ async def max_phone_number(
             )
 
         # Send message
-        await parser.parser_queue.put(
-            {
-                "action": "start_auth",
-                "user_id": message.from_user.id,
-                "data": {"phone": phone_number},
-            }
-        )
+        data = StartAuthMessage(user_id=message.from_user.id, phone=phone_number)
+        await queue_manager.to_ws.put(data)
 
     except ValueError:
         await message.reply(ErrorPhrases.invalid())
@@ -187,9 +177,7 @@ async def max_phone_number(
 
 
 @router.message(LoginWithMax.phone_code)
-async def max_phone_code(
-    message: Message, db: Database, state: FSMContext, parser: MaxParser
-) -> None:
+async def max_phone_code(message: Message, db: Database, state: FSMContext) -> None:
     try:
         code = message.text
 
@@ -201,13 +189,8 @@ async def max_phone_code(
         if token is None:
             raise Exception("Token not found")
 
-        await parser.parser_queue.put(
-            {
-                "action": "verify_code",
-                "user_id": message.from_user.id,
-                "data": {"code": code, "token": token},
-            }
-        )
+        data = VerifyCodeMessage(user_id=message.from_user.id, code=code, token=token)
+        await queue_manager.to_ws.put(data)
 
         await message.reply(Phrases.wait_for_confirmation())
 
@@ -228,7 +211,7 @@ async def max_phone_code(
 
 
 @router.message(Command(ButtonPhrases.command_max_delete))
-async def max_delete_command(message: Message, db: Database) -> None:
+async def max_delete_command(message: Message) -> None:
     await message.answer("not implemented yet")
 
 

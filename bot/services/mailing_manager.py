@@ -1,4 +1,5 @@
 import logging
+
 from typing import Literal
 
 from aiogram import Bot
@@ -6,19 +7,19 @@ from aiogram.types import InlineKeyboardMarkup
 from aiogram.types.input_paid_media_photo import InputPaidMediaPhoto
 from aiogram.utils.media_group import MediaGroupBuilder
 
-from models.media_model import MediaModel
-from db.database import Database
+from bot.models.media_model import MediaModel
+from bot.db.database import Database
 
-from keyboards.admin.admin_kb import manage_new_schedule_inline_kb
-from keyboards.user_kb import under_post_inline_kb
+from bot.keyboards.admin.admin_kb import manage_new_schedule_inline_kb
+from bot.keyboards.user_kb import under_post_inline_kb
 
-from models.schedule import ScheduleType
-from models.user import User
+from bot.models.schedule import ScheduleType
+from bot.models.user import User
 
-from utils.date_utils import get_tomorrow_date
-from utils.phrases import ErrorPhrases, Phrases
+from bot.utils.date_utils import get_tomorrow_date
+from bot.utils.phrases import ErrorPhrases, Phrases
 
-from settings import config
+from config import config
 
 logger = logging.getLogger(__name__)
 

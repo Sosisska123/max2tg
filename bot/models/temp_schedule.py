@@ -1,7 +1,9 @@
-from models.user import Base
 import datetime
+
 from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
+from bot.models.user import Base
 
 
 # saved schedule before accepting

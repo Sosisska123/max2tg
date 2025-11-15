@@ -1,6 +1,6 @@
 from typing import Optional
 
-from models.user import Base
+from bot.models.user import Base
 
 from sqlalchemy import BigInteger, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship

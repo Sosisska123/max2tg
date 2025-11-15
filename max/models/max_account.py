@@ -1,7 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel
 
-from parser.models.chat import ChatModel
+from models.chat import ChatModel
 
 
 class MaxAccountModel(BaseModel):

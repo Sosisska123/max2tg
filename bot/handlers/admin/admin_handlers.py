@@ -5,19 +5,15 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
 
-from db.database import Database
-
-from filters.is_admin import IsAdmin
-from keyboards.admin.admin_kb import main_admin_inline_kb
-
-from models.schedule import ScheduleType
-
-from utils.date_utils import get_tomorrow_date
-from services.mailing_manager import send_new_post_to_admin, send_files_to_users
-from utils.phrases import AdminPhrases, ErrorPhrases
-from utils.states import LoadScheduleFsm
-
-from services.schedule import save_ring_schedule
+from bot.db.database import Database
+from bot.filters.is_admin import IsAdmin
+from bot.keyboards.admin.admin_kb import main_admin_inline_kb
+from bot.models.schedule import ScheduleType
+from bot.utils.date_utils import get_tomorrow_date
+from bot.utils.phrases import AdminPhrases, ErrorPhrases
+from bot.utils.states import LoadScheduleFsm
+from bot.services.mailing_manager import send_new_post_to_admin, send_files_to_users
+from bot.services.schedule import save_ring_schedule
 
 
 router = Router()

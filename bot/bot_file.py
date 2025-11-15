@@ -4,7 +4,7 @@ from aiogram.enums import ParseMode
 
 # from aiogram.client.session.aiohttp import AiohttpSession
 
-from settings import env
+from config import env
 
 bot = Bot(
     token=env.bot_token.get_secret_value(),

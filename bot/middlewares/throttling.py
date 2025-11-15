@@ -1,25 +1,26 @@
-from aiogram import BaseMiddleware
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 import logging
 
-from db.database import Database
+from aiogram import BaseMiddleware
 
-from settings import config
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+
+from config import Settings
 
 from cachetools import TTLCache
 
-from utils.phrases import ErrorPhrases
+from bot.db.database import Database
+from bot.utils.phrases import ErrorPhrases
 
 log = logging.getLogger(__name__)
 
 
 class ThrottlingMiddleware(BaseMiddleware):
-    def __init__(self, session: async_sessionmaker[AsyncSession], ttl: int = 5):
+    def __init__(self, session: async_sessionmaker[AsyncSession], config: Settings):
         self.config = config
         self.session = session
-        self.ttl = ttl
-        self.user_timeouts = TTLCache(maxsize=10000, ttl=ttl)
-        self.notified_users = TTLCache(maxsize=10000, ttl=ttl)
+        self.ttl = config.bot.ttl_default
+        self.user_timeouts = TTLCache(maxsize=10000, ttl=config.bot.ttl_default)
+        self.notified_users = TTLCache(maxsize=10000, ttl=config.bot.ttl_default)
         super().__init__()
 
     async def __call__(self, handler, event, data):

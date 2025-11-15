@@ -1,7 +1,7 @@
 from typing import Optional
 
-from db.database import Database
-from models.schedule import Schedule, ScheduleType
+from bot.db.database import Database
+from bot.models.schedule import Schedule, ScheduleType
 
 
 async def save_ring_schedule(

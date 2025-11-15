@@ -1,5 +1,7 @@
 from enum import Enum
-from models.user import Base
+
+from bot.models.user import Base
+
 from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 

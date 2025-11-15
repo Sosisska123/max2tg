@@ -12,7 +12,7 @@ from typing import Any, Callable, Optional
 
 from functools import wraps
 
-from templates.payloads import (
+from .templates.payloads import (
     get_ping_json,
     get_useragent_header_json,
     get_token_json,
@@ -23,7 +23,7 @@ from templates.payloads import (
     get_check_code_json,
 )
 
-from utils.date import get_unix_now
+from .utils.date import get_unix_now
 from config import config
 
 logging.basicConfig(

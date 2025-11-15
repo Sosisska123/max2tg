@@ -1,4 +1,5 @@
 import logging
+
 from aiogram.types import (
     KeyboardButton,
     ReplyKeyboardMarkup,
@@ -6,8 +7,9 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from models.max_group import MaxGroupConfig
-from utils.phrases import ButtonPhrases
+from bot.models.max_group import MaxGroupConfig
+
+from bot.utils.phrases import ButtonPhrases
 
 
 def reply_startup_kb() -> ReplyKeyboardMarkup:

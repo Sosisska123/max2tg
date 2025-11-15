@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from typing import List
+from typing import List, Literal
 
 from pydantic import BaseModel, SecretStr, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict, YamlConfigSettingsSource
@@ -16,6 +16,7 @@ env_file_path = str(BASE_DIR / "shared" / ".env")
 # Validate required configuration files exist
 _yaml_path = Path(yaml_file_path)
 _env_path = Path(env_file_path)
+
 if not _yaml_path.exists():
     raise FileNotFoundError(f"Required config file not found: {yaml_file_path}")
 if not _env_path.exists():
@@ -29,8 +30,20 @@ class BotSettings(BaseModel):
 
 
 class LoggingConfig(BaseModel):
+    log_level: Literal[
+        "debug",
+        "info",
+        "warning",
+        "error",
+        "critical",
+    ] = "info"
+
     log_format: str = Field(..., alias="format")
     date_format: str = Field(...)
+
+
+class WebSocket(BaseModel):
+    url: str = Field(...)
 
 
 class Settings(BaseSettings):
@@ -43,6 +56,7 @@ class Settings(BaseSettings):
 
     bot: BotSettings
     logging: LoggingConfig
+    ws: WebSocket
 
     @classmethod
     def settings_customise_sources(cls, settings_cls, **kwargs):

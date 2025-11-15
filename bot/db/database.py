@@ -7,11 +7,11 @@ from sqlalchemy import delete, desc, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.max_group import Group, MaxGroupConfig
-from models.schedule import Schedule, ScheduleType
-from models.temp_schedule import TempSchedule
-from models.user import Base, User
-from utils.date_utils import get_today_date, get_tomorrow_date
+from bot.models.max_group import Group, MaxGroupConfig
+from bot.models.schedule import Schedule, ScheduleType
+from bot.models.temp_schedule import TempSchedule
+from bot.models.user import Base, User
+from bot.utils.date_utils import get_today_date, get_tomorrow_date
 
 log = logging.getLogger(__name__)
 

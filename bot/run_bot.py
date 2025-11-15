@@ -1,45 +1,24 @@
-import asyncio
-import logging
-
 from aiogram import Dispatcher
 
-import sys
-from pathlib import Path
+from bot.callbacks.user import router as user_callback_router
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from max.client import MaxParser
+from bot.handlers.admin.admin_handlers import router as admin_router
+from bot.handlers.user import router as user_router
+from bot.handlers.max import router as max_router
 
-from callbacks.user import router as user_callback_router
+from bot.db.db_dependency import DBDependency
 
-from handlers.admin.admin_handlers import router as admin_router
-from handlers.user import router as user_router
-from handlers.max import router as max_router
+from bot.middlewares.throttling import ThrottlingMiddleware
 
-from db.database import init_db
-from db.db_dependency import DBDependency
-
-from middlewares.throttling import ThrottlingMiddleware
-
-from bot_file import bot
-from settings import config
-from services.parser_worker import listen_for_parser_messages
+from bot.bot_file import bot
+from config import Settings
 
 dp = Dispatcher()
 
 
-async def start() -> None:
+async def start_bot(config: Settings, db_dependency: DBDependency) -> None:
     # Initialize database dependency
-    db_dependency = DBDependency()
     async_session = db_dependency.db_session
-
-    # Initialize queues for bot-parser communication
-    bot_queue = asyncio.Queue()
-
-    # Initialize MaxParser
-    parser = MaxParser(bot_queue)
-
-    # Initialize database
-    await init_db(db_dependency._engine)
 
     dp.include_routers(
         admin_router,
@@ -49,17 +28,10 @@ async def start() -> None:
     )
 
     # Add throttling middleware after registration middleware
-    dp.message.middleware(
-        ThrottlingMiddleware(session=async_session, ttl=config.bot.ttl_default)
-    )
+    dp.message.middleware(ThrottlingMiddleware(session=async_session, config=config))
     dp.callback_query.middleware(
-        ThrottlingMiddleware(session=async_session, ttl=config.bot.ttl_default)
+        ThrottlingMiddleware(session=async_session, config=config)
     )
-
-    # Create a task to listen for commands from the bot
-    asyncio.create_task(parser.listen_for_commands())
-
-    asyncio.create_task(listen_for_parser_messages(db_dependency, bot_queue, bot))
 
     await bot.delete_webhook(True)
-    await dp.start_polling(bot, parser=parser)
+    await dp.start_polling(bot)

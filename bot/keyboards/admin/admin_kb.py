@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from utils.phrases import AdminPhrases
+from bot.utils.phrases import AdminPhrases
 
 
 def main_admin_inline_kb() -> InlineKeyboardMarkup:

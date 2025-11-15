@@ -1,18 +1,17 @@
 from aiogram import Router, F
 from aiogram import types
 
-from db.database import Database
-from parser.client import MaxParser
-from utils.phrases import ErrorPhrases, Phrases
+from bot.db.database import Database
+from bot.utils.phrases import ErrorPhrases, Phrases
 
+from core.queue_manager import queue_manager
+from core.message_models import SubscribeToChatMessage
 
 router = Router()
 
 
 @router.callback_query(F.data.startswith("max_chat_"))
-async def select_max_chat(
-    callback: types.CallbackQuery, db: Database, parser: MaxParser
-) -> None:
+async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
     args = callback.data.split("_")
 
     if len(args) != 3:
@@ -53,12 +52,7 @@ async def select_max_chat(
     else:
         await callback.answer(Phrases.max_chat_connection_error(max_chat_id))
 
-    await parser.parser_queue.put(
-        {
-            "action": "subscribe_chat",
-            "user_id": callback.from_user.id,
-            "data": {"subscribed_max_chat": max_chat_id},
-        }
-    )
+    data = SubscribeToChatMessage(user_id=callback.from_user.id, chat_id=max_chat_id)
+    await queue_manager.to_ws.put(data)
 
     await callback.message.delete()
