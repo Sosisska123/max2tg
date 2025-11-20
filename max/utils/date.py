@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 def get_unix_now() -> int:
     """Get UNIX timestamp"""
 
-    return datetime.now().timestamp()
+    return datetime.now(timezone.utc).timestamp()
 
 
 def utc_to_unix(date: str) -> int:

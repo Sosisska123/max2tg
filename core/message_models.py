@@ -1,3 +1,4 @@
+from typing import Literal, Optional
 from pydantic import BaseModel
 
 
@@ -6,36 +7,58 @@ class MessageModel(BaseModel):
     user_id: int
 
 
+class Attach(BaseModel):
+    base_url: str
+
+    # idk
+    photo_id: Optional[str] = None
+
+
 class PhoneConfirmedMessage(MessageModel):
-    type: str = "phone_confirmed"
+    type: Literal["phone_confirmed"] = "phone_confirmed"
     token: str
 
 
 class SMSConfirmedMessage(MessageModel):
-    type: str = "sms_confirmed"
+    type: Literal["sms_confirmed"] = "sms_confirmed"
 
 
 class FetchChatsMessage(MessageModel):
-    type: str = "fetch_chats"
-    all_message: dict
+    type: Literal["fetch_chats"] = "fetch_chats"
+    chat_id: int
+    chat_title: str
+    messages_count: int
+    last_message_id: int
 
 
 class SendChatListMessage(MessageModel):
-    type: str = "send_chat_list"
+    type: Literal["send_chat_list"] = "send_chat_list"
     all_message: dict
 
 
 class StartAuthMessage(MessageModel):
-    type: str = "start_auth"
+    type: Literal["start_auth"] = "start_auth"
     phone: str
 
 
 class VerifyCodeMessage(MessageModel):
-    type: str = "verify_code"
+    type: Literal["verify_code"] = "verify_code"
     token: str
     code: str
 
 
 class SubscribeToChatMessage(MessageModel):
-    type: str = "subscribe_to_chat"
+    type: Literal["subscribe_to_chat"] = "subscribe_to_chat"
     chat_id: str
+
+
+class ChatMsgMessage(MessageModel):
+    """Base message model for any chat messages"""
+
+    type: Literal["new_chat_message"] = "new_chat_message"
+    sender_id: str
+    message_id: str
+    timestamp: int
+    text: str
+    attachments: Optional[list[Attach]] = None
+    replied_msg: Optional["ChatMsgMessage"] = None

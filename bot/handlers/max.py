@@ -15,7 +15,7 @@ from bot.utils.phrases import ButtonPhrases, ErrorPhrases, Phrases
 
 from bot.db.database import Database
 
-from core.queue_manager import queue_manager
+from core.queue_manager import get_queue_manager
 from core.message_models import StartAuthMessage, VerifyCodeMessage
 
 
@@ -62,7 +62,9 @@ async def subscribe_max(message: Message, db: Database, state: FSMContext) -> No
 
     # Add new subscription
     group = await db.store_tg_group(
-        group_id=message.chat.id, title=message.chat.title, creator_id=user.tg_id
+        group_id=message.chat.id,
+        title=message.chat.title or "Unnamed Group",
+        creator_id=user.tg_id,
     )
 
     if group:
@@ -72,10 +74,9 @@ async def subscribe_max(message: Message, db: Database, state: FSMContext) -> No
                 await db.get_max_available_chats(user.tg_id)
             ),
         )
+        await state.set_state(SubscribeMaxChat.select_listening_chat)
     else:
         await message.answer(ErrorPhrases.something_went_wrong())
-
-    await state.set_state(SubscribeMaxChat.select_listening_chat)
 
 
 @router.message(Command(ButtonPhrases.command_deactivate_max))
@@ -153,13 +154,11 @@ async def max_phone_number(message: Message, state: FSMContext) -> None:
 
         # Format ph nm
         if not re.match(r"^\+7\d{10}$", phone_number):
-            raise ValueError(
-                f"Phone number must be in format +7xxxxxxxxxx, got: {phone_number}"
-            )
+            raise ValueError("Phone number must be in format +7xxxxxxxxxx")
 
         # Send message
         data = StartAuthMessage(user_id=message.from_user.id, phone=phone_number)
-        await queue_manager.to_ws.put(data)
+        await get_queue_manager().to_ws.put(data)
 
     except ValueError:
         await message.reply(ErrorPhrases.invalid())
@@ -190,7 +189,7 @@ async def max_phone_code(message: Message, db: Database, state: FSMContext) -> N
             raise Exception("Token not found")
 
         data = VerifyCodeMessage(user_id=message.from_user.id, code=code, token=token)
-        await queue_manager.to_ws.put(data)
+        await get_queue_manager().to_ws.put(data)
 
         await message.reply(Phrases.wait_for_confirmation())
 

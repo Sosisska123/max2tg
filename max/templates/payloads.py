@@ -77,7 +77,7 @@ def get_useragent_header_json(useragent: str = None) -> str:
     )
 
 
-def get_token_json(token: str) -> str:
+def get_token_json(token: str, seq: int = 1) -> str:
     """**OPCODE 19**
     The second package that send to the websocket server. Used for user auth and receive its chat list and more
 
@@ -88,6 +88,7 @@ def get_token_json(token: str) -> str:
 
 
         It looks like this: `An_Sx6HQ9HDi...`
+        seq (int, optional): Sequence number. Defaults to 1.
 
     Returns:
         str: JSON
@@ -96,7 +97,7 @@ def get_token_json(token: str) -> str:
         {
             "ver": 11,
             "cmd": 0,
-            "seq": 1,
+            "seq": seq,
             "opcode": 19,
             "payload": {
                 "interactive": True,
@@ -111,7 +112,7 @@ def get_token_json(token: str) -> str:
     )
 
 
-def get_subscribe_json(state: bool, chat_id: str, seq: int) -> str:
+def get_subscribe_json(state: bool, chat_id: int, seq: int) -> str:
     """**OPCODE 75**
     Somewhy when a user changes the chat this package is sent
     honestly idk why and what does it affect
@@ -134,7 +135,7 @@ def get_subscribe_json(state: bool, chat_id: str, seq: int) -> str:
             "cmd": 0,
             "seq": seq,
             "opcode": 75,
-            "payload": {"chatId": chat_id, "subscribe": state},
+            "payload": {"chatId": str(chat_id), "subscribe": state},
         }
     )
 
@@ -192,7 +193,7 @@ def get_messages_json(
     chat_id: int, timestamp: int, seq: int, messages_count: int = 30
 ) -> str:
     """**OPCODE 49**
-    Get messages from chat. idk should you send subscription first or not
+    Get last 30 messages from a certain chat. idk do you send subscription first or not
 
     After successful auth you'll receive smth like this:
     ```
@@ -384,5 +385,30 @@ def get_check_code_json(token: str, code: str, seq: int) -> str:
                 "verifyCode": code,
                 "authTokenType": "CHECK_CODE",
             },
+        }
+    )
+
+
+def get_received_message_response_json(seq: int, chat_id: int, message_id: str) -> str:
+    """**OPCODE 128**
+    Used for received message response. somehow MAX web version send this data to server
+    Interesting fact: This is the only sending data with cmd=1 and received data with cmd=0
+
+    Args:
+        seq (int): Sequence number
+        chat_id (int): Chat ID
+        message_id (str): Message ID
+
+    Returns:
+        str: JSON
+    """
+
+    return json.dumps(
+        {
+            "ver": 11,
+            "cmd": 1,
+            "seq": seq,
+            "opcode": 128,
+            "payload": {"chatId": chat_id, "messageId": message_id},
         }
     )

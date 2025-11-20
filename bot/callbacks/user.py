@@ -4,7 +4,7 @@ from aiogram import types
 from bot.db.database import Database
 from bot.utils.phrases import ErrorPhrases, Phrases
 
-from core.queue_manager import queue_manager
+from core.queue_manager import get_queue_manager
 from core.message_models import SubscribeToChatMessage
 
 router = Router()
@@ -19,8 +19,9 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
 
     if args[2] == "empty":
         await callback.answer(ErrorPhrases.something_went_wrong, show_alert=True)
-        await callback.message.delete()
-        return
+        if callback.message:
+            await callback.message.delete()
+            return
 
     user = await db.get_user(callback.from_user.id)
 
@@ -49,10 +50,12 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
 
     if r:
         await callback.answer(Phrases.max_chat_connection_success(max_chat_id))
+        data = SubscribeToChatMessage(
+            user_id=callback.from_user.id, chat_id=max_chat_id
+        )
+        await get_queue_manager().to_ws.put(data)
     else:
         await callback.answer(Phrases.max_chat_connection_error(max_chat_id))
 
-    data = SubscribeToChatMessage(user_id=callback.from_user.id, chat_id=max_chat_id)
-    await queue_manager.to_ws.put(data)
-
+    await callback.message.delete()
     await callback.message.delete()

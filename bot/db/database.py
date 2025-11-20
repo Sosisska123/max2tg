@@ -403,9 +403,6 @@ class Database:
         """Save Telegram group to connect MAX to it later"""
         try:
             group = Group(self_id=group_id, group_title=title, creator_id=creator_id)
-            group.max_config = MaxGroupConfig(
-                connected_group_id=group_id, owner_id=creator_id
-            )
 
             self.session.add(group)
             await self.session.commit()
@@ -490,7 +487,7 @@ class Database:
             await self.session.rollback()
             return None
 
-    async def get_max_available_chats(self, owner_tg_id: int) -> List[Group]:
+    async def get_max_available_chats(self, owner_tg_id: int) -> List[MaxGroupConfig]:
         """Get all added MAX chats for a user"""
         try:
             result = await self.session.execute(

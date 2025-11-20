@@ -21,6 +21,9 @@ class ThrottlingMiddleware(BaseMiddleware):
         self.ttl = config.bot.ttl_default
         self.user_timeouts = TTLCache(maxsize=10000, ttl=config.bot.ttl_default)
         self.notified_users = TTLCache(maxsize=10000, ttl=config.bot.ttl_default)
+
+        # Add thread-safe locking to TTLCache instances for concurrent asyncio access.
+        # cachetools.TTLCache is not thread-safe, and asyncache provides helpers to use cachetools with asyncio. Since aiogram processes events concurrently as asyncio tasks, the two TTLCache instances require synchronization. Either wrap with asyncache.cached() decorator, pass a threading.Lock via cachetools' decorated cache, or use asyncio-native caching.
         super().__init__()
 
     async def __call__(self, handler, event, data):

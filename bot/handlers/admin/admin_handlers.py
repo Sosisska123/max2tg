@@ -192,8 +192,7 @@ async def admin_mail_everyone_command(
         args[1],
     )
 
-    ignore_notification = args[2] if args[2] else False
-
+    ignore_notification = args[2] if len(args) > 2 else False
     await send_files_to_users(
         message=msg,
         bot=message.bot,

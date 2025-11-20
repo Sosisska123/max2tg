@@ -12,6 +12,14 @@ from typing import Any, Callable, Optional
 
 from functools import wraps
 
+from core.message_models import (
+    FetchChatsMessage,
+    ChatMsgMessage,
+    PhoneConfirmedMessage,
+    SMSConfirmedMessage,
+    Attach,
+)
+
 from .templates.payloads import (
     get_ping_json,
     get_useragent_header_json,
@@ -21,16 +29,14 @@ from .templates.payloads import (
     get_messages_json,
     get_start_auth_json,
     get_check_code_json,
+    get_received_message_response_json,
 )
 
 from .utils.date import get_unix_now
+
 from config import config
 
-logging.basicConfig(
-    level=logging.INFO,
-    datefmt=config.logging.date_format,
-    format=config.logging.log_format,
-)
+from core.queue_manager import get_queue_manager
 
 logger = logging.getLogger(__name__)
 
@@ -48,14 +54,12 @@ def ensure_connected(method: Callable):
 class MaxClient:
     def __init__(
         self,
-        bot_queue: asyncio.Queue,
         tg_user_id: int,
         token: str = None,
         proxy: str | bool = True,
     ):
         self.websocket: Optional[websockets.ClientConnection] = None
         self.token = token
-        self.bot_queue = bot_queue
         self.proxy = proxy
         self.tg_user_id = tg_user_id
 
@@ -86,11 +90,14 @@ class MaxClient:
                 proxy=self.proxy,
             )
 
+            # Token is generally used to collect user chats
             if auth_with_token:
                 await self._handshake()
             else:
+                # if token is not provided, we need to get it first
+                logger.info("🔑 No token provided, getting it...")
                 await self.websocket.send(get_useragent_header_json())
-                self._seq = next(self._counter)
+                self._get_next_seq()
 
             logger.info("✅ Connected to MAX websocket")
 
@@ -119,22 +126,20 @@ class MaxClient:
 
     @ensure_connected
     async def listen_to_chat(self, chat_id: str):
-        """Listen to a chat for new messages"""
-
-        if chat_id is None:
-            raise ValueError("Chat ID cannot be empty")
+        """Listen to the specific chat for new messages"""
 
         if chat_id == self._current_listening_chat:
             raise ValueError("You are already listening to this chat")
 
+        # Unsubscribe from the previous chat
         if self._current_listening_chat is not None:
-            await self.subscribe_to_chat(self._current_listening_chat, False)
+            await self._subscribe_to_chat(self._current_listening_chat, False)
 
-        await self.subscribe_to_chat(chat_id, True)
+        await self._subscribe_to_chat(chat_id, True)
         self._current_listening_chat = chat_id
 
-        if self._chat_subscribtion_ping_task is None:
-            self._chat_subscribtion_ping_task = asyncio.create_task(
+        if self._chat_subscription_ping_task is None:
+            self._chat_subscription_ping_task = asyncio.create_task(
                 self._chat_subscription_ping()
             )
 
@@ -144,26 +149,26 @@ class MaxClient:
     async def stop_listening_to_chat(self, chat_id: str):
         """Stop listening to a chat"""
 
-        if chat_id is None:
-            raise ValueError("Chat ID cannot be empty")
-
         if chat_id != self._current_listening_chat:
             raise ValueError("You are not listening to this chat")
 
         self._current_listening_chat = None
 
-        await self.subscribe_to_chat(chat_id, False)
+        await self._subscribe_to_chat(chat_id, False)
 
         logger.info(f"💭❌ Stopped listening to any chat. The last chat was: {chat_id}")
 
     @ensure_connected
-    async def subscribe_to_chat(self, chat_id: str, state: bool = True):
-        """Ping it every 1 minute if your listening to a chat. Use it before getting messages
-        Subscribe or unsubscribe from a chat"""
+    async def _subscribe_to_chat(self, chat_id: str, state: bool = True):
+        """
+        Use it before getting messages
+        Subscribe or unsubscribe from a chat
+        """
 
         logger.debug("Start/stop pinging to chat %s... | state: %s", chat_id, state)
-        await self.websocket.send(get_subscribe_json(state, chat_id, self._seq))
-        self._seq = next(self._counter)
+        await self.websocket.send(
+            get_subscribe_json(state, chat_id, self._get_next_seq())
+        )
 
     @ensure_connected
     async def read_last_message(self, chat_id: int, message_id: str):
@@ -175,33 +180,214 @@ class MaxClient:
             message_id,
         )
         await self.websocket.send(
-            get_read_last_message_json(chat_id, message_id, get_unix_now(), self._seq)
+            get_read_last_message_json(
+                chat_id, message_id, get_unix_now(), self._get_next_seq()
+            )
         )
-        self._seq = next(self._counter)
 
     @ensure_connected
     async def get_messages_from_chat(self, chat_id: int):
-        """Get messages from a chat. It sends only when the chat was opened for the first time"""
+        """
+        Get the last 30 messages from a chat
+        It sends only when the chat was opened for the first time
+        """
 
         logger.debug("Getting messages from chat %s ...", chat_id)
-        await self.websocket.send(get_messages_json(chat_id, get_unix_now(), self._seq))
-        self._seq = next(self._counter)
+        await self.websocket.send(
+            get_messages_json(chat_id, get_unix_now(), self._get_next_seq())
+        )
 
     @ensure_connected
     async def start_auth(self, phone: str):
         """Start the authentication process"""
 
         logger.debug("Starting authentication...")
-        await self.websocket.send(get_start_auth_json(phone, self._seq))
-        self._seq = next(self._counter)
+        await self.websocket.send(get_start_auth_json(phone, self._get_next_seq()))
 
     @ensure_connected
     async def check_code(self, token: str, code: str):
         """Check the authentication code"""
 
         logger.debug("Verifying code... | token: %s", token)
-        await self.websocket.send(get_check_code_json(token, code, self._seq))
-        self._seq = next(self._counter)
+        await self.websocket.send(
+            get_check_code_json(token, code, self._get_next_seq())
+        )
+
+    async def _try_extract_link_from_message(
+        self, message: dict[str, Any]
+    ) -> tuple[list[Attach], Optional[ChatMsgMessage]]:
+        attaches = []
+        replied_msg = None
+
+        if message.get("link"):
+            # NOTE: But not only photo messages has "link" attribute
+            #       Oftenly messages with media (like photo) has "type" attribute set to "FORWARD"
+
+            # TODO: Add "REPLY" type support along with "FORWARD"
+
+            link = message.get("link")
+            linked_msg = link.get("message")
+
+            if link.get("type") == "FORWARD":
+                for attach in linked_msg.get("attaches", []):
+                    if attach.get("_type") != "PHOTO":
+                        continue
+
+                    at = Attach(
+                        base_url=attach.get("baseUrl"),
+                        photo_id=attach.get("photoId"),
+                    )
+                    attaches.append(at)
+
+            elif link.get("type") == "REPLY":
+                # TODO: Add EDITED message support
+                #       "status": "EDITED", "updatedTime" fields
+
+                # TODO: Add attaches support for replied messages
+
+                replied_msg = ChatMsgMessage(
+                    user_id=self.tg_user_id,
+                    sender_id=linked_msg.get("sender"),
+                    message_id=linked_msg.get("id"),
+                    timestamp=linked_msg.get("time"),
+                    text=linked_msg.get("text"),
+                )
+
+            return attaches, replied_msg
+
+    async def _process_opcode17(self, message: dict[str, Any]) -> None:
+        """Process opcode 17: start auth, phone confirmation"""
+
+        short_token = message.get("payload", {}).get("token")
+
+        if short_token:
+            self.token = short_token
+
+            await get_queue_manager().to_bot.put(
+                PhoneConfirmedMessage(user_id=self.tg_user_id, token=short_token)
+            )
+
+            logger.debug("Phone number sent, code requested, short token received")
+
+    async def _process_opcode18(self, message: dict[str, Any]) -> None:
+        """Process opcode 18: SMS confirmation and final token"""
+
+        token_attrs = message.get("payload", {}).get("tokenAttrs")
+
+        if token_attrs:
+            self.token = token_attrs.get("LOGIN", {}).get("token")
+
+        await get_queue_manager().to_bot.put(
+            SMSConfirmedMessage(user_id=self.tg_user_id)
+        )
+
+        logger.info("🔑 New Token received | %s", self.token)
+        await self._fetch_chats()
+
+    async def _process_opcode19(self, message: dict[str, Any]) -> None:
+        """Process opcode 19: chat list"""
+
+        logger.debug("Collecting user information | Fetching chats...")
+        chats = []
+
+        for chat in message.get("payload", {}).get("chats", []):
+            chat_id = chat.get("id")
+            chat_title = chat.get("title")
+
+            if not chat_id or not chat_title:
+                continue
+
+            msgs_count = chat.get("messagesCount", 0)
+            last_message = chat.get("lastMessage")
+            last_msg_id = last_message.get("id") if last_message else 0
+
+            chats.append(
+                FetchChatsMessage(
+                    user_id=self.tg_user_id,
+                    chat_id=chat_id,
+                    chat_title=chat_title,
+                    messages_count=msgs_count,
+                    last_message_id=last_msg_id,
+                )
+            )
+
+        await get_queue_manager().to_bot.put(chats)
+
+    async def _process_opcode49(self, message: dict[str, Any]) -> None:
+        """Process opcode 49: chat messages"""
+
+        payload = message.get("payload", {})
+
+        logger.debug("Collecting messages from chat...")
+
+        msgs = []
+
+        for msg_data in payload.get("messages", []):
+            # NOTE: Only messages that linked with other message
+            #       Or messages that has extra data
+            #       has "link" attribute
+
+            # NOTE: Attr "attaches" on default messages usually reflects chat events
+            #       like joinByLink, leave, add
+            #       But on linked messages it may contain media (like photo)
+
+            attaches, replied_msg = await self._try_extract_link_from_message(msg_data)
+
+            msgs.append(
+                ChatMsgMessage(
+                    user_id=self.tg_user_id,
+                    sender_id=msg_data.get("sender"),
+                    message_id=msg_data.get("id"),
+                    timestamp=msg_data.get("time"),
+                    text=msg_data.get("text"),
+                    attachments=attaches,
+                    replied_msg=replied_msg,
+                )
+            )
+
+        await get_queue_manager().to_bot.put(msgs)
+
+    @ensure_connected
+    async def _process_opcode64(self, message: dict[str, Any]) -> None:
+        """Process opcode 64: Collect new chat message in chat"""
+
+        return
+
+        payload = message.get("payload", {})
+
+        logger.debug("New message received from chat %s ...", payload.get("chatId"))
+
+        await get_queue_manager().to_bot.put(
+            ChatMsgMessage(
+                user_id=self.tg_user_id,
+                sender_id=payload.get("sender"),
+                message_id=payload.get("id"),
+                timestamp=payload.get("time"),
+                text=payload.get("text"),
+            )
+        )
+
+    @ensure_connected
+    async def _process_opcode128(self, message: dict[str, Any]) -> None:
+        """Process opcode 128: Receive new message from anywhere"""
+
+        payload = message.get("payload", {})
+
+        logger.debug("New message received from chat %s ...", payload.get("chatId"))
+
+        attaches, replied_msg = await self._try_extract_link_from_message(payload)
+
+        await get_queue_manager().to_bot.put(
+            ChatMsgMessage(
+                user_id=self.tg_user_id,
+                sender_id=payload.get("sender"),
+                message_id=payload.get("id"),
+                timestamp=payload.get("time"),
+                text=payload.get("text"),
+                attachments=attaches,
+                replied_msg=replied_msg,
+            )
+        )
 
     @ensure_connected
     async def process_message(self, message: dict[str, Any]):
@@ -211,52 +397,26 @@ class MaxClient:
 
         match message.get("opcode", -1):
             case 17:
-                short_token = message.get("payload", {}).get("token", None)
-                self.token = short_token
-
-                await self.bot_queue.put(
-                    {
-                        "action": "phone_confirmed",
-                        "user_id": self.tg_user_id,
-                        "data": {"token": short_token},
-                    }
-                )
-
-                logger.debug("Phone number sent, code requested, short token received")
-
+                await self._process_opcode17(message)
             case 18:
-                token_attrs = message.get("payload", {}).get("tokenAttrs", None)
-
-                if token_attrs:
-                    self.token = token_attrs.get("LOGIN", None).get("token")
-
-                await self.bot_queue.put(
-                    {
-                        "action": "sms_confirmed",
-                        "user_id": self.tg_user_id,
-                        "data": {},
-                    }
-                )
-
-                logger.info("🔑 New Token received | %s", self.token)
-
-                # Fetching chats
-                await self._fetch_chats()
-
+                await self._process_opcode18(message)
             case 19:
-                logger.debug("Collecting user information | Fetching chats...")
-
-                await self.bot_queue.put(
-                    {
-                        "action": "fetch_chats",
-                        "user_id": self.tg_user_id,
-                        "data": {"all_message": message},
-                    }
-                )
-
+                await self._process_opcode19(message)
             case 49:
-                logger.debug("Collecting chat messages...")
+                await self._process_opcode49(message)
+            case 64:
+                await self._process_opcode64(message)
+            case 128:
+                await self._process_opcode128(message)
+                # MAX web version send some data to server
+                payload = message.get("payload", {})
+                msg = payload.get("message", {})
 
+                await self.websocket.send(
+                    get_received_message_response_json(
+                        self._get_next_seq(), msg.get("chatId"), msg.get("id")
+                    )
+                )
             case -1:
                 logger.warning(f"Unknown opcode: {message}")
             case _:
@@ -272,8 +432,7 @@ class MaxClient:
         if self.token is None:
             raise ValueError("Need to set token first")
 
-        await self.websocket.send(get_token_json(self.token))
-        self._seq = next(self._counter)
+        await self.websocket.send(get_token_json(self.token, self._get_next_seq()))
 
     @ensure_connected
     async def _handshake(self):
@@ -283,9 +442,7 @@ class MaxClient:
             raise ValueError("Need to set token first")
 
         await self.websocket.send(get_useragent_header_json())
-        await self.websocket.send(get_token_json(self.token))
-
-        self._seq = next(self._counter)
+        await self.websocket.send(get_token_json(self.token, self._get_next_seq()))
 
     @ensure_connected
     async def _read_messages(self):
@@ -308,9 +465,6 @@ class MaxClient:
                         f"💀 Error: {message['payload']['error']}: {message['payload']['localizedMessage']}"
                     )
 
-                elif message.get("payload", None):
-                    pass
-
                 await self.process_message(message)
 
             except websockets.exceptions.ConnectionClosed:
@@ -327,8 +481,7 @@ class MaxClient:
 
         while self.websocket is not None:
             await asyncio.sleep(30)
-            await self.websocket.send(get_ping_json(self._seq))
-            self._seq = next(self._counter)
+            await self.websocket.send(get_ping_json(self._get_next_seq()))
 
     @ensure_connected
     async def _chat_subscription_ping(self):
@@ -340,5 +493,9 @@ class MaxClient:
             if self._current_listening_chat is None:
                 continue
 
-            await self.subscribe_to_chat(self._current_listening_chat, True)
-            self._seq = next(self._counter)
+            await self._subscribe_to_chat(self._current_listening_chat, True)
+
+    def _get_next_seq(self) -> int:
+        """Get the next sequence number."""
+        self._seq = next(self._counter)
+        return self._seq

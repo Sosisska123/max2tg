@@ -13,10 +13,10 @@ from bot.middlewares.throttling import ThrottlingMiddleware
 from bot.bot_file import bot
 from config import Settings
 
-dp = Dispatcher()
-
 
 async def start_bot(config: Settings, db_dependency: DBDependency) -> None:
+    dp = Dispatcher()
+
     # Initialize database dependency
     async_session = db_dependency.db_session
 

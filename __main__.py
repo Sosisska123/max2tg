@@ -30,11 +30,28 @@ async def main():
 
     logging.info("================ Бот запущен ================")
 
-    await asyncio.gather(
-        start_bot(config=config, db_dependency=db_dependency),
-        handle_from_bot(bot=bot, db_dependency=db_dependency),
-        handle_from_ws(max_manager=max_manager),
-    )
+    tasks = [
+        asyncio.create_task(start_bot(config=config, db_dependency=db_dependency)),
+        asyncio.create_task(handle_from_bot(max_manager=max_manager)),
+        asyncio.create_task(handle_from_ws(bot=bot, db_dependency=db_dependency)),
+    ]
+
+    try:
+        await asyncio.gather(*tasks)
+    except Exception as e:
+        logging.error(f"Task failed: {e}", exc_info=True)
+    finally:
+        # Cancel all running tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+    # Wait for cancellation to complete
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Cleanup resources
+    await db_dependency.engine.dispose()
+    # Add any other cleanup for max_manager or bot if needed
 
 
 if __name__ == "__main__":

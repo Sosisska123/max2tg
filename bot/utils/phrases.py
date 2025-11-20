@@ -9,7 +9,7 @@ class Phrases:
 
     @staticmethod
     def success() -> str:
-        return "✅ Регистрациия пройдена"
+        return "✅ Регистрация пройдена"
 
     @staticmethod
     def already_registered() -> str:
@@ -38,7 +38,7 @@ class Phrases:
         username: str, text: str, reply_message_id: int = None
     ) -> str:
         return (
-            f"{username}</b>: {text}"
+            f"<b>{username}</b>: {text}"
             if reply_message_id is None
             else f"<b>{username}</b>: {text}\n<i>Reply to {reply_message_id}</i>"
         )
@@ -49,7 +49,7 @@ class Phrases:
 
     @staticmethod
     def group_disconnected_success(group_name: str) -> str:
-        return f"❌ Группа <b>{group_name}</b> успешна отписана"
+        return f"❌ Группа <b>{group_name}</b> успешно отписана"
 
     @staticmethod
     def select_max_chat() -> str:
@@ -97,7 +97,7 @@ class Phrases:
 
     @staticmethod
     def max_wait_for_phone_acception(phone_number: str) -> str:
-        return f"СМС отправлено на номер +7{phone_number}. ⌛ Подождите пока пройдет верификация"
+        return f"СМС отправлено на номер {phone_number}. ⌛ Подождите пока пройдет верификация"
 
     @staticmethod
     def max_request_sms() -> str:
@@ -291,4 +291,4 @@ class ButtonPhrases:
     command_max_delete = "max_delete"
     command_max_reconnect = "mac_recon"
 
-    command_max_help: str = "Помощь по подключению макса"
+    command_max_help_desc: str = "Помощь по подключению макса"

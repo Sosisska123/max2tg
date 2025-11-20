@@ -13,15 +13,6 @@ BASE_DIR = Path(__file__).parent
 yaml_file_path = str(BASE_DIR / "shared" / "config.yaml")
 env_file_path = str(BASE_DIR / "shared" / ".env")
 
-# Validate required configuration files exist
-_yaml_path = Path(yaml_file_path)
-_env_path = Path(env_file_path)
-
-if not _yaml_path.exists():
-    raise FileNotFoundError(f"Required config file not found: {yaml_file_path}")
-if not _env_path.exists():
-    raise FileNotFoundError(f"Required env file not found: {env_file_path}")
-
 
 class BotSettings(BaseModel):
     admins: List[int] = Field(...)

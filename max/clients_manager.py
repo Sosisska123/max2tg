@@ -1,5 +1,4 @@
 import logging
-import asyncio
 
 from typing import Optional
 from .client import MaxClient
@@ -8,24 +7,31 @@ logger = logging.getLogger(__name__)
 
 
 class MaxManager:
+    """
+    Shared manager to manage and centralize the communication
+    between modules. It is used to manage the "Client API's"
+
+    Each "Client API" is an instance of the MaxClient class,
+    connected to its owner Telegram ID
+    """
+
     def __init__(self):
         self.clients: dict[str, MaxClient] = {}
-        self.parser_queue = asyncio.Queue()
 
     async def add_client(self, key: int, token: str) -> None:
         """
-        Create a new MaxClient with the token and add it to the parser
+        Create a new MaxClient with the existing token and add it to the manager
         The key is the User TG ID
         """
 
-        if not token or not key:
-            raise ValueError("One field is empty")
+        if not token or key is None:
+            raise ValueError("Token and key are required")
 
         if key in self.clients:
-            raise ValueError("Client with this TG User ID already exists")
+            raise Exception("Client with this TG User ID already exists")
 
-        client = MaxClient(bot_queue=self.bot_queue, token=token, tg_user_id=key)
-        await client.connect()
+        client = MaxClient(token=token, tg_user_id=key)
+        await client.connect(auth_with_token=True)
         self.clients[key] = client
 
     async def start_auth(self, key: int, phone_number: str):
@@ -34,15 +40,15 @@ class MaxManager:
         The key is the User TG ID
         """
 
-        if not phone_number or not key:
-            raise ValueError("One of the fields is empty")
+        if not phone_number or key is None:
+            raise ValueError("Phone number and key are required")
 
         if key in self.clients:
-            raise ValueError("Client with this TG User ID already exists")
+            raise Exception("Client with this TG User ID already exists")
 
-        client = MaxClient(bot_queue=self.bot_queue, tg_user_id=key)
+        client = MaxClient(tg_user_id=key)
 
-        await client.connect(auth_with_token=True)
+        await client.connect(auth_with_token=False)
         await client.start_auth(phone_number)
 
         self.clients[key] = client
@@ -53,12 +59,25 @@ class MaxManager:
         The key is User TG ID
         """
 
-        if not short_token or not code or not key:
-            raise ValueError("All fields must be filled in")
+        if not short_token or not code or key is None:
+            raise ValueError("All fields are required")
 
         client = self.get_client(key)
 
+        if client is None:
+            raise ValueError("Client with this TG User ID does not exist")
+
         await client.check_code(short_token, code)
+
+    async def get_messages_from_chat(self, key: int, chat_id: int):
+        """Get messages from a specific chat for a user."""
+
+        client = self.get_client(key)
+
+        if client is None:
+            raise ValueError("Client with this TG User ID does not exist")
+
+        await client.get_messages_from_chat(chat_id)
 
     async def remove_client(self, key: int):
         """
