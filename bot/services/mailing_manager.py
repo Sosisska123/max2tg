@@ -1,22 +1,12 @@
+from typing import Union
 import logging
 
-from typing import Literal
-
 from aiogram import Bot
-from aiogram.types import InlineKeyboardMarkup
-from aiogram.types.input_paid_media_photo import InputPaidMediaPhoto
 from aiogram.utils.media_group import MediaGroupBuilder
 
-from bot.models.media_model import MediaModel
 from bot.db.database import Database
-
 from bot.keyboards.admin.admin_kb import manage_new_schedule_inline_kb
-from bot.keyboards.user_kb import under_post_inline_kb
-
-from bot.models.schedule import ScheduleType
-from bot.models.user import User
-
-from bot.utils.date_utils import get_tomorrow_date
+from core.message_models import Attach
 from bot.utils.phrases import ErrorPhrases, Phrases
 
 from config import config
@@ -24,268 +14,134 @@ from config import config
 logger = logging.getLogger(__name__)
 
 
-async def send_files_to_users(
-    message: str,
-    bot: Bot,
-    users: list[User],
-    file_type: Literal["photo", "doc", "text"] = None,
-    files: list[str] = None,
-    reply_keyboard: InlineKeyboardMarkup = None,
-):
-    """общий метод чтобы отправить сообщение всем пользователям
-
-    Args:
-        files (list[str], optional): если пустой, отправляется прост текст. Defaults to None.
-    """
-
-    # Sned text message
-    if files is None or file_type == "text":
-        for user in users:
-            await bot.send_message(
-                chat_id=user.tg_id,
-                text=message,
-                reply_markup=reply_keyboard,
-            )
-        return
-
-    many_files = is_plural(files)
-
-    if many_files:
-        media_group = MediaGroupBuilder(caption=message)
-        add_media = (
-            media_group.add_document if file_type == "doc" else media_group.add_photo
-        )
-        for file in files:
-            add_media(file)
-
-    for user in users:
-        if many_files:
-            await bot.send_media_group(user.tg_id, media_group.build())
-            return
-
-        if file_type == "doc":
-            await bot.send_document(
-                caption=message,
-                chat_id=user.tg_id,
-                document=files,
-                reply_markup=reply_keyboard,
-            )
-
-        elif file_type == "photo":
-            await bot.send_photo(
-                caption=message,
-                chat_id=user.tg_id,
-                photo=files,
-                reply_markup=reply_keyboard,
-            )
-        else:
-            logger.error("Unknown file type")
-
-
-async def post_schedule_in_group(
-    bot: Bot,
-    db: Database,
-    group: str,
-    file_type: str,
-    files: list[str],
-    ignore_notification: bool = False,
-):
-    """Shortcut for mail_everyone_in_group()
-
-    Args:
-        ignore_notification (bool, optional): похуй на отключение рассылки. Defaults to False.
-
-    """
-
-    users = await db.get_all_users_in_group(group, ignore_notification)
-
-    if not users:
-        logger.error("There are no users in group %s", group)
-
-    await send_files_to_users(
-        message=Phrases.schedule_text(get_tomorrow_date()),
-        bot=bot,
-        users=users,
-        file_type=file_type,
-        files=files,
-        reply_keyboard=under_post_inline_kb(),
-    )
-
-
-async def send_rings_to_user(
-    bot: Bot,
-    user: User,
-    rings_type: str,
-    file_type: Literal["photo", "doc", "text"],
-    files: list[str] | str,
-):
-    """Shortcut send ring schedule
-
-    Args:
-        bot (Bot): Bot object
-        user (User): Target user
-        rings_type (str): Ring and Default Ring types
-        file_type (str): File type [photo/text/doc]
-        files (list[str] | str): _description_
-    """
-
-    # KNN Group has no Rings Schedule
-    if user.group == "кнн":
-        await bot.send_message(
-            chat_id=user.tg_id,
-            text=Phrases.rings_knn(),
-        )
-
-    rings_date = (
-        get_tomorrow_date()
-        if rings_type == ScheduleType.RING.value
-        else ScheduleType.DEFAULT_RING.value
-    )
-
-    await send_files_to_users(
-        message=Phrases.schedule_text(rings_date),
-        bot=bot,
-        users=[user],
-        file_type=file_type,
-        files=files,
-        reply_keyboard=under_post_inline_kb(),
-    )
-
-
-async def send_schedule_to_user(
-    bot: Bot,
-    user: User,
-    file_type: Literal["photo", "doc", "text"],
-    files: list[str] | str,
-    date: str | None = None,
-):
-    """Shortcut send message to user
-
-    Args:
-        bot (Bot): Bot object
-        user (User): Target user
-        file_type (str): File type [photo/text/doc]
-        files (list[str] | str): Sending files
-        date (str | None, optional): _description_. Defaults to None.
-    """
-    await send_files_to_users(
-        message=Phrases.schedule_text(get_tomorrow_date() if date is None else date),
-        bot=bot,
-        users=[user],
-        file_type=file_type,
-        files=files,
-        reply_keyboard=under_post_inline_kb(),
-    )
-
-
-# region Forward message to Group
-
-
 async def forward_message_to_group(
     bot: Bot,
-    tg_groups: list[int],
-    username: str,
+    tg_group_ids: Union[int, list[int]],
+    sender_name: str,
     max_chat: str,
     message_text: str = None,
-    reply_message_id: int = None,
-    medias: list[MediaModel] = None,
+    replied_sender_name: str = None,
+    replied_text: str = None,
+    medias: list[Attach] = None,
 ):
     """Forward a single message to numerous group.
 
     Args:
-        bot (Bot): Bot object
+        bot (Bot): Bot object to perform sending
         tg_groups (list[str]): List of target subscribed groups ID's
         message_text (str): Source message text
         username (str): Sender username
         max_chat (str): Chat name
-        reply_message_id (int, optional): If message is replied to someone. Defaults to None.
+        replied_sender_name (str, optional): Replied sender name. Defaults to None.
+        replied_text (str, optional): Replied text. Defaults to None.
+        medias (list[MediaModel], optional): List of media to forward. Max up to 10. Defaults to None.
     """
     # if message has attached media
 
     if medias:
-        # If media is in the plural
+        # If media is in plural
 
-        many_files = is_plural(medias)
+        many_files = is_in_plural(medias)
 
         if many_files:
             media_group = MediaGroupBuilder(
                 caption=Phrases.max_forwarded_message_template(
-                    max_chat, username, message_text, reply_message_id
+                    max_chat,
+                    sender_name,
+                    message_text,
+                    replied_sender_name,
+                    replied_text,
                 )
             )
 
-            for media in medias:
-                match media.file_type:
-                    case "photo":
-                        media_group.add_photo(media.file_id)
-                    case "doc":
-                        media_group.add_document(media.file_id)
-                    case "video":
-                        media_group.add_video(media.file_id)
-        else:
-            # Otherwise if it has media but only one
+            max_files = min(len(medias), 10)
 
-            # Assigning the first object of this list to a single variable
+            for media in medias[:max_files]:
+                match media.type:
+                    case "photo":
+                        media_group.add_photo(media.base_url)
+                    case "doc":
+                        media_group.add_document(media.base_url)
+                    case "video":
+                        media_group.add_video(media.base_url)
+        else:
+            # Otherwise if it has only one file
+
+            # Assign the first object of this list to a single variable
             single_media = medias[0]
 
-    # If it doesn't send text message then
+    if isinstance(tg_group_ids, int):
+        tg_group_ids = [tg_group_ids]
 
-    for tg_group in tg_groups:
-        # Send message with media first
+    for group_id in tg_group_ids:
+        if many_files:
+            # Send media group with caption if its in plural
 
-        if medias:
-            if many_files:
-                # Send media group with caption if its in plural
+            await bot.send_media_group(
+                chat_id=group_id,
+                media=media_group.build(),
+            )
 
-                await bot.send_media_group(
-                    chat_id=tg_group,
-                    media=media_group.build(),
-                )
+        elif single_media:
+            # Send single media with caption
 
-            else:
-                # Send single media with caption
+            match single_media.type:
+                case "photo":
+                    await bot.send_photo(
+                        chat_id=group_id,
+                        photo=single_media.base_url,
+                        caption=Phrases.max_forwarded_message_template(
+                            max_chat,
+                            sender_name,
+                            message_text,
+                            replied_sender_name,
+                            replied_text,
+                        ),
+                    )
 
-                match single_media.file_type:
-                    case "photo":
-                        await bot.send_photo(
-                            chat_id=tg_group,
-                            photo=single_media.file_id,
-                            caption=Phrases.max_forwarded_message_template(
-                                max_chat, username, message_text, reply_message_id
-                            ),
-                        )
+                case "doc":
+                    await bot.send_document(
+                        chat_id=group_id,
+                        document=single_media.base_url,
+                        caption=Phrases.max_forwarded_message_template(
+                            max_chat,
+                            sender_name,
+                            message_text,
+                            replied_sender_name,
+                            replied_text,
+                        ),
+                    )
 
-                    case "doc":
-                        await bot.send_document(
-                            chat_id=tg_group,
-                            document=single_media.file_id,
-                            caption=Phrases.max_forwarded_message_template(
-                                max_chat, username, message_text, reply_message_id
-                            ),
-                        )
+                case "video":
+                    await bot.send_video(
+                        chat_id=group_id,
+                        video=single_media.base_url,
+                        caption=Phrases.max_forwarded_message_template(
+                            max_chat,
+                            sender_name,
+                            message_text,
+                            replied_sender_name,
+                            replied_text,
+                        ),
+                    )
 
-                    case "video":
-                        await bot.send_video(
-                            chat_id=tg_group,
-                            video=single_media.file_id,
-                            caption=Phrases.max_forwarded_message_template(
-                                max_chat, username, message_text, reply_message_id
-                            ),
-                        )
+        elif not many_files and not single_media:
+            # Send text message otherwise
 
-            continue
+            await bot.send_message(
+                chat_id=group_id,
+                text=Phrases.max_forwarded_message_template(
+                    max_chat,
+                    sender_name,
+                    message_text,
+                    replied_sender_name,
+                    replied_text,
+                ),
+            )
 
-        # Send text message otherwise
+        else:
+            logger.error(ErrorPhrases.something_went_wrong())
 
-        await bot.send_message(
-            chat_id=tg_group,
-            text=Phrases.max_forwarded_message_template(
-                max_chat, username, message_text, reply_message_id
-            ),
-        )
-
-
-# endregion
 
 # region admin
 
@@ -293,7 +149,7 @@ async def forward_message_to_group(
 async def send_new_post_to_admin(
     bot: Bot, group: str, file_type: str, files: list[str] | str, db: Database
 ):
-    many_files = is_plural(files)
+    many_files = is_in_plural(files)
 
     # vremenno todo ⚠️⚠️⚠️
     if file_type == "photo":
@@ -367,41 +223,7 @@ async def send_new_post_to_admin(
             create_job(bot, db, temp_schedule_id, msg)
 
 
-async def send_paid_files_to_users(
-    bot: Bot, user: User | list[User], file: str, date: str = None
-):
-    """only photos"""
-    photos = InputPaidMediaPhoto(media=file)
-    stars_count = 10
-
-    if isinstance(user, list):
-        for u in user:
-            await bot.send_paid_media(
-                u.tg_id,
-                stars_count,
-                [photos],
-                caption=Phrases.schedule_text(
-                    get_tomorrow_date() if date is None else date
-                ),
-                reply_markup=under_post_inline_kb(),
-            )
-        return
-
-    await bot.send_paid_media(
-        user.tg_id,
-        stars_count,
-        [photos],
-        caption=Phrases.schedule_text(get_tomorrow_date() if date is None else date),
-        reply_markup=under_post_inline_kb(),
-    )
-
-
-async def send_report_to_admin(bot: Bot, report: str):
-    for admin in config.bot.admins:
-        await bot.send_message(chat_id=admin, text=f"⚠️ {report}")
-
-
-def is_plural(files: list[str]) -> bool:
+def is_in_plural(files: list[str]) -> bool:
     if isinstance(files, str):
         return False
 

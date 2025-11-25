@@ -1,7 +1,8 @@
 import logging
 import asyncio
 
-from bot.db.database import init_db
+from bot.db.database import init_bot_db
+from max.db.max_repo import init_max_db
 from bot.bot_file import bot
 from bot.db.db_dependency import DBDependency
 from bot.run_bot import start_bot
@@ -14,29 +15,35 @@ from config import config
 
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     datefmt=config.logging.date_format,
     format=config.logging.log_format,
 )
 
 
 async def main():
-    db_dependency = DBDependency(config=config)
+    bot_db_dependency = DBDependency(db_url=config.bot.db_url)
+    max_db_dependency = DBDependency(db_url=config.max.db_url)
 
-    # Initialize database
-    await init_db(db_dependency.engine)
+    # Initialize bot  database
+    await init_bot_db(bot_db_dependency.engine)
+    await init_max_db(max_db_dependency.engine)
 
-    max_manager = MaxManager()
-
-    logging.info("================ Бот запущен ================")
+    max_manager = MaxManager(max_db_dependency)
 
     tasks = [
-        asyncio.create_task(start_bot(config=config, db_dependency=db_dependency)),
+        asyncio.create_task(start_bot(config=config, db_dependency=bot_db_dependency)),
         asyncio.create_task(handle_from_bot(max_manager=max_manager)),
-        asyncio.create_task(handle_from_ws(bot=bot, db_dependency=db_dependency)),
+        asyncio.create_task(handle_from_ws(bot=bot, db_dependency=bot_db_dependency)),
     ]
 
     try:
+        logging.info("================ MAX запускается... ================")
+
+        # await max_manager.startup()
+
+        logging.info("================ Бот запускается... ================")
+
         await asyncio.gather(*tasks)
     except Exception as e:
         logging.error(f"Task failed: {e}", exc_info=True)
@@ -46,12 +53,12 @@ async def main():
             if not task.done():
                 task.cancel()
 
-    # Wait for cancellation to complete
-    await asyncio.gather(*tasks, return_exceptions=True)
+        # Wait for cancellation to complete
+        await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Cleanup resources
-    await db_dependency.engine.dispose()
-    # Add any other cleanup for max_manager or bot if needed
+        # Cleanup resources
+        await bot_db_dependency.dispose()
+        # Add any other cleanup for max_manager or bot if needed
 
 
 if __name__ == "__main__":

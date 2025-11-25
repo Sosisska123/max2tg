@@ -19,9 +19,16 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
 
     if args[2] == "empty":
         await callback.answer(ErrorPhrases.something_went_wrong, show_alert=True)
+
         if callback.message:
             await callback.message.delete()
-            return
+        return
+    elif args[2] == "any":
+        if callback.message.chat.type not in ("group", "supergroup"):
+            await callback.answer(ErrorPhrases.wrong_chat_type(), show_alert=True)
+
+        await callback.message.delete()
+        return
 
     user = await db.get_user(callback.from_user.id)
 
@@ -44,9 +51,11 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
         await callback.answer(Phrases.max_same_user_error(), show_alert=True)
         return
 
-    max_chat_id = args[2]
+    max_chat_id = int(args[2])
 
     r = await db.connect_tg_max(tg_group.self_id, max_chat_id)
+
+    # 2025-11-22 21:31:12 | bot.db.database | ERROR | Error connecting Telegram group -5022357299 to MAX chat -68825814125286: greenlet_spawn has not been called; can't call await_only() here. Was IO attempted in an unexpected place? (Background on this error at: https://sqlalche.me/e/20/xd2s)
 
     if r:
         await callback.answer(Phrases.max_chat_connection_success(max_chat_id))
@@ -57,5 +66,4 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
     else:
         await callback.answer(Phrases.max_chat_connection_error(max_chat_id))
 
-    await callback.message.delete()
     await callback.message.delete()

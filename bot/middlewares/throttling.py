@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from aiogram import BaseMiddleware
@@ -22,8 +23,7 @@ class ThrottlingMiddleware(BaseMiddleware):
         self.user_timeouts = TTLCache(maxsize=10000, ttl=config.bot.ttl_default)
         self.notified_users = TTLCache(maxsize=10000, ttl=config.bot.ttl_default)
 
-        # Add thread-safe locking to TTLCache instances for concurrent asyncio access.
-        # cachetools.TTLCache is not thread-safe, and asyncache provides helpers to use cachetools with asyncio. Since aiogram processes events concurrently as asyncio tasks, the two TTLCache instances require synchronization. Either wrap with asyncache.cached() decorator, pass a threading.Lock via cachetools' decorated cache, or use asyncio-native caching.
+        self._cache_lock = asyncio.Lock()
         super().__init__()
 
     async def __call__(self, handler, event, data):
@@ -43,19 +43,24 @@ class ThrottlingMiddleware(BaseMiddleware):
                 return await handler(event, data)
 
             # Throttling logic
-            if user in self.user_timeouts:
-                if user not in self.notified_users:
-                    # For messages
-                    if hasattr(event, "answer"):
-                        await event.answer(ErrorPhrases.flood_warning(self.ttl))
-                    # For callback queries
-                    elif hasattr(event, "message") and hasattr(event.message, "answer"):
-                        await event.message.answer(ErrorPhrases.flood_warning(self.ttl))
+            async with self._cache_lock:
+                if user in self.user_timeouts:
+                    if user not in self.notified_users:
+                        # For messages
+                        if hasattr(event, "answer"):
+                            await event.answer(ErrorPhrases.flood_warning(self.ttl))
+                        # For callback queries
+                        elif hasattr(event, "message") and hasattr(
+                            event.message, "answer"
+                        ):
+                            await event.message.answer(
+                                ErrorPhrases.flood_warning(self.ttl)
+                            )
 
-                    self.notified_users[user] = None
+                        self.notified_users[user] = None
 
-                return None
+                    return None
 
-            self.user_timeouts[user] = None
+                self.user_timeouts[user] = None
 
             return await handler(event, data)

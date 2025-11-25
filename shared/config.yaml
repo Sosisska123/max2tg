@@ -3,6 +3,9 @@ bot:
   db_url: sqlite+aiosqlite:///bot/data.db
   ttl_default: 5
 
+max:
+  max_db_url: sqlite+aiosqlite:///max/max_accounts.db
+
 ws:
   url: wss://ws-api.oneme.ru/websocket
 

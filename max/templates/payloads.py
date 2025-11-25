@@ -121,8 +121,7 @@ def get_subscribe_json(state: bool, chat_id: int, seq: int) -> str:
     Args:
         state (bool): When a user changes the chat it will unsubscribe the previous one and subscribe the new one
         False on previous, True on new
-        chat_id (str): The chat id
-        seq (int): Each sub/unsub action has the different sequence number
+        chat_id (int): The chat id        seq (int): Each sub/unsub action has the different sequence number
 
 
     Returns:

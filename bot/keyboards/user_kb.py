@@ -55,6 +55,8 @@ def max_available_chats_inline_kb(groups: list[MaxGroupConfig]) -> InlineKeyboar
             builder.button(
                 text=group.chat_title, callback_data=f"max_chat_{group.chat_id}"
             )
+
+        builder.button(text="☁️ Any", callback_data="max_chat_any")
     except AttributeError as e:
         logging.error(f"Error accessing group attributes: {e}", exc_info=True)
         builder.button(text="🚫 Empty", callback_data="max_chat_empty")

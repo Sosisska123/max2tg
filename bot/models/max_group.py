@@ -16,11 +16,11 @@ class Group(Base):
     # telegram or max id, ex: -10000000
     self_id: Mapped[int] = mapped_column(BigInteger, unique=True)
     # telegram id of the user who created this group
-    creator_id: Mapped[Optional[int]] = mapped_column(
+    creator_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    # MAX chat ID that this group references to
+    connected_chat_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, nullable=True
-    )  # MAX chat ID thet this group references to
-    connected_chat_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    # max chat setting ext
+    )  # max chat setting ext
     max_config: Mapped[Optional["MaxGroupConfig"]] = relationship(
         "MaxGroupConfig", back_populates="group", uselist=False
     )
@@ -45,9 +45,8 @@ class MaxGroupConfig(Base):
     # messages count in max chat
     messages_count: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     group: Mapped[Optional["Group"]] = relationship(
-        "Group", back_populates="max_config"
+        "Group", back_populates="max_config", uselist=False
     )
-
     connected_group_id: Mapped[Optional[int]] = mapped_column(
         BigInteger, ForeignKey("groups.self_id"), unique=True, nullable=True
     )

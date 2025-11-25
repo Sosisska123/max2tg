@@ -37,6 +37,13 @@ async def subscribe_max(message: Message, db: Database, state: FSMContext) -> No
         await message.reply(ErrorPhrases.user_not_found())
         return
 
+    logger.debug(
+        "MAX_SUBSCRIBE | CHAT ID %s | CHAT TYPE %s | CHAT NAME %s",
+        message.chat.id,
+        message.chat.type,
+        message.chat.title,
+    )
+
     # if user is not logged in with MAX phone number
     if not user.can_connect_max:
         await message.reply(Phrases.max_registration_required())
@@ -46,13 +53,6 @@ async def subscribe_max(message: Message, db: Database, state: FSMContext) -> No
     if message.chat.type not in ("group", "supergroup"):
         await message.reply(ErrorPhrases.wrong_chat_type())
         return
-
-    logger.debug(
-        "MAX_SUBSCRIBE | CHAT ID %s | CHAT TYPE %s | CHAT NAME %s",
-        message.chat.id,
-        message.chat.type,
-        message.chat.title,
-    )
 
     # If this group is already connected we'll return
     group = await db.get_tg_group_by_id(message.chat.id)
@@ -69,7 +69,9 @@ async def subscribe_max(message: Message, db: Database, state: FSMContext) -> No
 
     if group:
         await message.answer(
-            Phrases.group_connected_success(message.chat.title, group.creator_id),
+            Phrases.group_connected_success(
+                message.chat.title, group.creator_id, user.username
+            ),
             reply_markup=max_available_chats_inline_kb(
                 await db.get_max_available_chats(user.tg_id)
             ),
@@ -182,11 +184,10 @@ async def max_phone_code(message: Message, db: Database, state: FSMContext) -> N
 
         if not code.isdigit():
             raise ValueError("Code must contain only digits")
-
         token = await db.get_max_token(message.from_user.id)
 
         if token is None:
-            raise Exception("Token not found")
+            raise ValueError("Token not found")
 
         data = VerifyCodeMessage(user_id=message.from_user.id, code=code, token=token)
         await get_queue_manager().to_ws.put(data)
@@ -206,7 +207,6 @@ async def max_phone_code(message: Message, db: Database, state: FSMContext) -> N
 
     finally:
         await state.clear()
-        return
 
 
 @router.message(Command(ButtonPhrases.command_max_delete))

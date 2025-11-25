@@ -16,7 +16,7 @@ from bot.utils.date_utils import get_today_date, get_tomorrow_date
 log = logging.getLogger(__name__)
 
 
-async def init_db(engine):
+async def init_bot_db(engine):
     async with engine.begin() as conn:
         # await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
@@ -214,9 +214,11 @@ class Database:
             log.error("Date is required for RING schedule type")
             return None
 
+        date_str = date.isoformat() if date else ""
+
         return await self.save_schedule(
             group=group,
-            date=date.isoformat() if date else None,
+            date=date_str,
             url=url,
             file_type="photo",
             schedule_type=schedule_type.value,
@@ -378,7 +380,8 @@ class Database:
                 return False
 
             group.connected_chat_id = None
-            group.max_config.chat_id = None
+            if group.max_config:
+                group.max_config.chat_id = None
 
             await self.session.commit()
             return True
@@ -443,6 +446,16 @@ class Database:
         except SQLAlchemyError as e:
             log.error(f"Error getting connected group {tg_id}: {e}")
             return None
+
+    async def get_tg_groups_subscribed_to_max(self, max_chat_id: int) -> List[Group]:
+        try:
+            result = await self.session.execute(
+                select(Group).where(Group.connected_chat_id == max_chat_id)
+            )
+            return result.scalars().all()
+        except SQLAlchemyError as e:
+            log.error(f"Error getting connected groups list: {e}")
+            return []
 
     async def store_user_max_chat(
         self,

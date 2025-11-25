@@ -8,15 +8,16 @@ import websockets
 import itertools
 import json
 
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from functools import wraps
 
 from core.message_models import (
+    MessageModel,
     FetchChatsMessage,
     ChatMsgMessage,
-    PhoneConfirmedMessage,
     SMSConfirmedMessage,
+    PhoneSentMessage,
     Attach,
 )
 
@@ -63,7 +64,7 @@ class MaxClient:
         self.proxy = proxy
         self.tg_user_id = tg_user_id
 
-        self._ws_url = config.ws_url
+        self._ws_url = config.ws.url
         self._seq = 0
         self._counter = itertools.count(0, 1)
         self._current_listening_chat: Optional[str] = None
@@ -108,7 +109,6 @@ class MaxClient:
             logger.error(f"Failed to connect to MAX websocket: {e}")
             raise
 
-    @ensure_connected
     async def disconnect(self):
         """Disconnect from the MAX websocket server."""
 
@@ -219,17 +219,21 @@ class MaxClient:
         attaches = []
         replied_msg = None
 
-        if message.get("link"):
-            # NOTE: But not only photo messages has "link" attribute
-            #       Oftenly messages with media (like photo) has "type" attribute set to "FORWARD"
+        # NOTE: Only messages that linked with other message
+        #       Or messages that has extra data
+        #       has "link" attribute
 
-            # TODO: Add "REPLY" type support along with "FORWARD"
+        link = message.get("link", None)
 
-            link = message.get("link")
+        if link:
+            # NOTE: If this message was replied or forwarded
+            #       It has a "link" attribute with attaches
+
             linked_msg = link.get("message")
 
             if link.get("type") == "FORWARD":
                 for attach in linked_msg.get("attaches", []):
+                    # TODO: Add text and other types support
                     if attach.get("_type") != "PHOTO":
                         continue
 
@@ -247,13 +251,22 @@ class MaxClient:
 
                 replied_msg = ChatMsgMessage(
                     user_id=self.tg_user_id,
-                    sender_id=linked_msg.get("sender"),
-                    message_id=linked_msg.get("id"),
-                    timestamp=linked_msg.get("time"),
-                    text=linked_msg.get("text"),
+                    sender_id=linked_msg.get("sender", 0),
+                    message_id=linked_msg.get("id", 0),
+                    timestamp=linked_msg.get("time", 0),
+                    text=linked_msg.get("text", ""),
                 )
+        for attach in message.get("attaches", []):
+            if attach.get("_type") != "PHOTO":
+                continue
 
-            return attaches, replied_msg
+            at = Attach(
+                base_url=attach.get("baseUrl"),
+                photo_id=attach.get("photoId"),
+            )
+            attaches.append(at)
+
+        return attaches, replied_msg
 
     async def _process_opcode17(self, message: dict[str, Any]) -> None:
         """Process opcode 17: start auth, phone confirmation"""
@@ -263,8 +276,8 @@ class MaxClient:
         if short_token:
             self.token = short_token
 
-            await get_queue_manager().to_bot.put(
-                PhoneConfirmedMessage(user_id=self.tg_user_id, token=short_token)
+            await self._add_message_to_queue(
+                PhoneSentMessage(user_id=self.tg_user_id, short_token=short_token)
             )
 
             logger.debug("Phone number sent, code requested, short token received")
@@ -277,8 +290,8 @@ class MaxClient:
         if token_attrs:
             self.token = token_attrs.get("LOGIN", {}).get("token")
 
-        await get_queue_manager().to_bot.put(
-            SMSConfirmedMessage(user_id=self.tg_user_id)
+        await self._add_message_to_queue(
+            SMSConfirmedMessage(user_id=self.tg_user_id, full_token=self.token)
         )
 
         logger.info("🔑 New Token received | %s", self.token)
@@ -311,10 +324,10 @@ class MaxClient:
                 )
             )
 
-        await get_queue_manager().to_bot.put(chats)
+        await self._add_message_to_queue(chats)
 
     async def _process_opcode49(self, message: dict[str, Any]) -> None:
-        """Process opcode 49: chat messages"""
+        """Process opcode 49: get last 30 chat messages"""
 
         payload = message.get("payload", {})
 
@@ -323,10 +336,6 @@ class MaxClient:
         msgs = []
 
         for msg_data in payload.get("messages", []):
-            # NOTE: Only messages that linked with other message
-            #       Or messages that has extra data
-            #       has "link" attribute
-
             # NOTE: Attr "attaches" on default messages usually reflects chat events
             #       like joinByLink, leave, add
             #       But on linked messages it may contain media (like photo)
@@ -340,12 +349,12 @@ class MaxClient:
                     message_id=msg_data.get("id"),
                     timestamp=msg_data.get("time"),
                     text=msg_data.get("text"),
-                    attachments=attaches,
+                    attaches=attaches,
                     replied_msg=replied_msg,
                 )
             )
 
-        await get_queue_manager().to_bot.put(msgs)
+        await self._add_message_to_queue(msgs)
 
     @ensure_connected
     async def _process_opcode64(self, message: dict[str, Any]) -> None:
@@ -355,9 +364,11 @@ class MaxClient:
 
         payload = message.get("payload", {})
 
-        logger.debug("New message received from chat %s ...", payload.get("chatId"))
+        logger.debug(
+            "New message received from chat %s ...", payload.get("chatId", "NOT CHAT")
+        )
 
-        await get_queue_manager().to_bot.put(
+        await self._add_message_to_queue(
             ChatMsgMessage(
                 user_id=self.tg_user_id,
                 sender_id=payload.get("sender"),
@@ -372,22 +383,33 @@ class MaxClient:
         """Process opcode 128: Receive new message from anywhere"""
 
         payload = message.get("payload", {})
+        message_data = payload.get("message", {})
 
-        logger.debug("New message received from chat %s ...", payload.get("chatId"))
+        logger.debug(
+            "New message received from chat %s ...", payload.get("chatId", "NOT CHAT")
+        )
 
-        attaches, replied_msg = await self._try_extract_link_from_message(payload)
+        attaches, replied_msg = await self._try_extract_link_from_message(message_data)
 
-        await get_queue_manager().to_bot.put(
+        await self._add_message_to_queue(
             ChatMsgMessage(
                 user_id=self.tg_user_id,
-                sender_id=payload.get("sender"),
-                message_id=payload.get("id"),
-                timestamp=payload.get("time"),
-                text=payload.get("text"),
-                attachments=attaches,
+                chat_id=payload.get("chatId"),
+                sender_id=message_data.get("sender"),
+                message_id=message_data.get("id"),
+                timestamp=message_data.get("time"),
+                text=message_data.get("text"),
+                attaches=attaches,
                 replied_msg=replied_msg,
             )
         )
+
+    async def _add_message_to_queue(
+        self, message: Union[list[MessageModel], MessageModel]
+    ):
+        """Add a message to the bot queue"""
+
+        await get_queue_manager().to_bot.put(message)
 
     @ensure_connected
     async def process_message(self, message: dict[str, Any]):
@@ -457,6 +479,9 @@ class MaxClient:
 
                 message = json.loads(raw_message)
 
+                if not message:
+                    continue
+
                 logger.debug(f"Received message from MAX: {message}")
 
                 # Handle errors
@@ -472,8 +497,13 @@ class MaxClient:
                 # TODO: Implement controlled reconnection to avoid task leaks
                 break
 
+            except AttributeError:
+                # this must be a ping message
+                continue
+
             except Exception as e:
                 logger.error(f"Error while reading messages from MAX: {e}")
+                continue
 
     @ensure_connected
     async def _send_ping(self):
@@ -481,6 +511,8 @@ class MaxClient:
 
         while self.websocket is not None:
             await asyncio.sleep(30)
+            if self.websocket is None:
+                break
             await self.websocket.send(get_ping_json(self._get_next_seq()))
 
     @ensure_connected

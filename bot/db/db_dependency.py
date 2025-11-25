@@ -5,16 +5,24 @@ from sqlalchemy.ext.asyncio import (
     AsyncEngine,
 )
 
-from config import Settings
-
 
 class DBDependency:
-    def __init__(self, config: Settings) -> None:
-        self._engine = create_async_engine(url=config.bot.db_url)
+    def __init__(self, db_url: str) -> None:
+        self._engine = create_async_engine(url=db_url)
         self._session_factory = async_sessionmaker(
             bind=self._engine,
             expire_on_commit=False,
         )
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self._engine.dispose()
+
+    async def dispose(self) -> None:
+        """Dispose of the engine and close all connections."""
+        await self._engine.dispose()
 
     @property
     def engine(self) -> AsyncEngine:

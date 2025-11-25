@@ -12,7 +12,7 @@ from bot.models.schedule import ScheduleType
 from bot.utils.date_utils import get_tomorrow_date
 from bot.utils.phrases import AdminPhrases, ErrorPhrases
 from bot.utils.states import LoadScheduleFsm
-from bot.services.mailing_manager import send_new_post_to_admin, send_files_to_users
+from bot.services.mailing_manager import send_new_post_to_admin
 from bot.services.schedule import save_ring_schedule
 
 
@@ -41,6 +41,10 @@ async def admin_load_schedule(
     message: Message, state: FSMContext, command: CommandObject
 ):
     await state.set_state(LoadScheduleFsm.load_file)
+
+    if not command.args:
+        await message.reply(ErrorPhrases.length_error())
+        return
 
     args = command.args.split()
 
@@ -193,11 +197,11 @@ async def admin_mail_everyone_command(
     )
 
     ignore_notification = args[2] if len(args) > 2 else False
-    await send_files_to_users(
-        message=msg,
-        bot=message.bot,
-        users=await db.get_all_users_in_group(group, ignore_notification),
-    )
+    # await send_files_to_users(
+    #     message=msg,
+    #     bot=message.bot,
+    #     users=await db.get_all_users_in_group(group, ignore_notification),
+    # )
 
 
 @router.message(Command(AdminPhrases.command_list_var), IsAdmin())

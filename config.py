@@ -20,6 +20,10 @@ class BotSettings(BaseModel):
     ttl_default: int = Field(...)
 
 
+class MaxSettings(BaseModel):
+    db_url: str = Field(..., alias="max_db_url")
+
+
 class LoggingConfig(BaseModel):
     log_level: Literal[
         "debug",
@@ -46,6 +50,7 @@ class Settings(BaseSettings):
     )
 
     bot: BotSettings
+    max: MaxSettings
     logging: LoggingConfig
     ws: WebSocket
 

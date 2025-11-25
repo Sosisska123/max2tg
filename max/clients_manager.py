@@ -1,6 +1,12 @@
+import asyncio
 import logging
 
 from typing import Optional
+
+from bot.db.db_dependency import DBDependency
+
+from max.db.max_repo import MaxRepository
+
 from .client import MaxClient
 
 logger = logging.getLogger(__name__)
@@ -15,24 +21,40 @@ class MaxManager:
     connected to its owner Telegram ID
     """
 
-    def __init__(self):
+    def __init__(self, db_dependency: DBDependency):
         self.clients: dict[str, MaxClient] = {}
+        self.db_dependency = db_dependency
 
-    async def add_client(self, key: int, token: str) -> None:
+    async def startup(self):
+        """
+        Load saved accounts,
+        use their token and owner TG ID to connect several account's at once
+        """
+
+        await self._load_clients()
+
+    async def add_client(self, key: int, token: str, save_in_db=True) -> None:
         """
         Create a new MaxClient with the existing token and add it to the manager
+        And save it to the Database
         The key is the User TG ID
         """
 
-        if not token or key is None:
-            raise ValueError("Token and key are required")
-
         if key in self.clients:
-            raise Exception("Client with this TG User ID already exists")
+            raise ValueError("Client with this TG User ID already exists")
 
         client = MaxClient(token=token, tg_user_id=key)
         await client.connect(auth_with_token=True)
+
         self.clients[key] = client
+
+        if not save_in_db:
+            return
+
+        async with self.db_dependency.db_session() as session:
+            db = MaxRepository(session)
+
+            await db.save_account(user_tg_id=key, token=token)
 
     async def start_auth(self, key: int, phone_number: str):
         """
@@ -99,10 +121,24 @@ class MaxManager:
 
         return self.clients[key]
 
-    async def _startup(self):
-        pass
-
     async def _load_clients(self):
-        # Fetch Model from DB
-        # Load from User Model into self.clients :: [from_db_id, from_db_token]
-        pass
+        """
+        Load saved accounts,
+        use their token and owner TG ID to connect several account's at once
+        """
+
+        accounts = []
+
+        async with self.db_dependency.db_session() as session:
+            db = MaxRepository(session)
+
+            accounts = await db.get_all_accounts()
+
+        if len(accounts) == 0:
+            return
+
+        for acc in accounts:
+            # FIXME: Maybe i should add delay between lo
+            await asyncio.sleep(1)
+
+            await self.add_client(acc.user_tg_id, acc.token, save_in_db=False)

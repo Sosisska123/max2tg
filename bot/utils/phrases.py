@@ -35,17 +35,23 @@ class Phrases:
 
     @staticmethod
     def max_forwarded_message_template(
-        username: str, text: str, reply_message_id: int = None
+        chat_name: str,
+        sender_name: str,
+        text: str,
+        replied_msg_sender_name: str = None,
+        replied_msg_text: str = None,
     ) -> str:
-        return (
-            f"<b>{username}</b>: {text}"
-            if reply_message_id is None
-            else f"<b>{username}</b>: {text}\n<i>Reply to {reply_message_id}</i>"
-        )
+        if replied_msg_sender_name and replied_msg_text:
+            return (
+                f"↪️ Forwarded {replied_msg_sender_name}: {replied_msg_text}",
+                f"☁️ {chat_name} | {sender_name}: {text}",
+            )
+        else:
+            return f"☁️ {chat_name} | {sender_name}: {text}"
 
     @staticmethod
-    def group_connected_success(group_name: str, creator_id: int) -> str:
-        return f"✅ Группа <b>{group_name}</b> подписана. ID создателя: <code>{creator_id}</code>\nТеперь выберите чат <b>MAX из</b> которого будут пересылаться сообщения:"
+    def group_connected_success(group_name: str, creator_id: int, username: str) -> str:
+        return f"✅ Группа <b>{group_name}</b> подписана\nID создателя: <code>{creator_id}</code> | Username: <code>{username}</code>\nТеперь выберите чат <b>MAX из</b> которого будут пересылаться сообщения:"
 
     @staticmethod
     def group_disconnected_success(group_name: str) -> str:
@@ -279,16 +285,16 @@ class ButtonPhrases:
     @staticmethod
     def max_reg_help() -> str:
         return (
-            "Чтобы связать чат в <b>MAX</b> и группу <b>Телеграм</b>, нужен любой <b>номер телефона</b> который зарегистрирован в MAX и <b>находится в этом чате</b>\n\n"
-            f"Только <b>одному</b> человеку нужно зарегистрироваться в этом боте и отправить сообщение /{ButtonPhrases.command_activate_max} в группу, <b>где уже находится этот бот</b>\n\n"
-            f"/{ButtonPhrases.command_deactivate_max} — Чтобы отписать эту группу\n"
-            f"/{ButtonPhrases.command_max_delete} — Для удаления регистрации в боте\n"
-            f"/{ButtonPhrases.command_max_reconnect} — Поменять чат для прослушивания\n"
+            f"/{ButtonPhrases.command_max_reg} -- Добавить аккаунт в бота"
+            f"/{ButtonPhrases.command_activate_max} -- Подписать группу, выбрать чат и получать сообщения в группе\n"
+            f"/{ButtonPhrases.command_deactivate_max} —- Отписать эту группу (не пресылать соо.)\n"
+            f"/{ButtonPhrases.command_max_delete} —- Удалить регистрацию в боте (не рабоатет)\n"
+            f"/{ButtonPhrases.command_max_reconnect} —- Поменять читаемый чат в группе\n"
         )
 
     command_max_help = "max_help"
     command_max_reg = "max_reg"
     command_max_delete = "max_delete"
-    command_max_reconnect = "mac_recon"
+    command_max_reconnect = "max_recon"
 
     command_max_help_desc: str = "Помощь по подключению макса"
