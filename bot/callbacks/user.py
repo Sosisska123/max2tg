@@ -55,8 +55,6 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
 
     r = await db.connect_tg_max(tg_group.self_id, max_chat_id)
 
-    # 2025-11-22 21:31:12 | bot.db.database | ERROR | Error connecting Telegram group -5022357299 to MAX chat -68825814125286: greenlet_spawn has not been called; can't call await_only() here. Was IO attempted in an unexpected place? (Background on this error at: https://sqlalche.me/e/20/xd2s)
-
     if r:
         await callback.answer(Phrases.max_chat_connection_success(max_chat_id))
         data = SubscribeToChatMessage(

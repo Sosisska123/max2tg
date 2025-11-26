@@ -40,7 +40,7 @@ async def main():
     try:
         logging.info("================ MAX запускается... ================")
 
-        # await max_manager.startup()
+        await max_manager.startup()
 
         logging.info("================ Бот запускается... ================")
 

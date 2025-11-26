@@ -213,60 +213,22 @@ class MaxClient:
             get_check_code_json(token, code, self._get_next_seq())
         )
 
-    async def _try_extract_link_from_message(
-        self, message: dict[str, Any]
-    ) -> tuple[list[Attach], Optional[ChatMsgMessage]]:
+    async def _extarct_all_attaches(self, message: dict[str, Any]) -> list[Attach]:
+        """
+        This method is used to extract all attaches from a message
+        """
+
         attaches = []
-        replied_msg = None
 
-        # NOTE: Only messages that linked with other message
-        #       Or messages that has extra data
-        #       has "link" attribute
-
-        link = message.get("link", None)
-
-        if link:
-            # NOTE: If this message was replied or forwarded
-            #       It has a "link" attribute with attaches
-
-            linked_msg = link.get("message")
-
-            if link.get("type") == "FORWARD":
-                for attach in linked_msg.get("attaches", []):
-                    # TODO: Add text and other types support
-                    if attach.get("_type") != "PHOTO":
-                        continue
-
-                    at = Attach(
-                        base_url=attach.get("baseUrl"),
-                        photo_id=attach.get("photoId"),
-                    )
-                    attaches.append(at)
-
-            elif link.get("type") == "REPLY":
-                # TODO: Add EDITED message support
-                #       "status": "EDITED", "updatedTime" fields
-
-                # TODO: Add attaches support for replied messages
-
-                replied_msg = ChatMsgMessage(
-                    user_id=self.tg_user_id,
-                    sender_id=linked_msg.get("sender", 0),
-                    message_id=linked_msg.get("id", 0),
-                    timestamp=linked_msg.get("time", 0),
-                    text=linked_msg.get("text", ""),
-                )
         for attach in message.get("attaches", []):
+            # TODO: Add other types support
             if attach.get("_type") != "PHOTO":
                 continue
 
-            at = Attach(
-                base_url=attach.get("baseUrl"),
-                photo_id=attach.get("photoId"),
-            )
+            at = Attach(base_url=attach.get("baseUrl"))
             attaches.append(at)
 
-        return attaches, replied_msg
+        return attaches
 
     async def _process_opcode17(self, message: dict[str, Any]) -> None:
         """Process opcode 17: start auth, phone confirmation"""
@@ -295,7 +257,7 @@ class MaxClient:
         )
 
         logger.info("🔑 New Token received | %s", self.token)
-        await self._fetch_chats()
+        await self.fetch_chats()
 
     async def _process_opcode19(self, message: dict[str, Any]) -> None:
         """Process opcode 19: chat list"""
@@ -336,11 +298,10 @@ class MaxClient:
         msgs = []
 
         for msg_data in payload.get("messages", []):
-            # NOTE: Attr "attaches" on default messages usually reflects chat events
+            # NOTE: Attr "attaches" on default messages usually have chat events
             #       like joinByLink, leave, add
             #       But on linked messages it may contain media (like photo)
-
-            attaches, replied_msg = await self._try_extract_link_from_message(msg_data)
+            #       Now we're not extracting photos beacuse it would be a lot of media
 
             msgs.append(
                 ChatMsgMessage(
@@ -349,8 +310,6 @@ class MaxClient:
                     message_id=msg_data.get("id"),
                     timestamp=msg_data.get("time"),
                     text=msg_data.get("text"),
-                    attaches=attaches,
-                    replied_msg=replied_msg,
                 )
             )
 
@@ -360,6 +319,7 @@ class MaxClient:
     async def _process_opcode64(self, message: dict[str, Any]) -> None:
         """Process opcode 64: Collect new chat message in chat"""
 
+        # i think it SENDS message to server
         return
 
         payload = message.get("payload", {})
@@ -389,7 +349,14 @@ class MaxClient:
             "New message received from chat %s ...", payload.get("chatId", "NOT CHAT")
         )
 
-        attaches, replied_msg = await self._try_extract_link_from_message(message_data)
+        attaches = []
+        replied_msg = None
+
+        if message_data.get("link"):
+            replied_msg = message_data.get("link").get("message", {})
+
+            attaches.extend(await self._extarct_all_attaches(message_data))
+            attaches.extend(await self._extarct_all_attaches(replied_msg))
 
         await self._add_message_to_queue(
             ChatMsgMessage(
@@ -445,7 +412,7 @@ class MaxClient:
                 logger.warning(f"Unknown opcode: {message}")
 
     @ensure_connected
-    async def _fetch_chats(self):
+    async def fetch_chats(self):
         """
         Fetch chats using the provided auth token.
         Use if you are logging for the first time
@@ -487,7 +454,7 @@ class MaxClient:
                 # Handle errors
                 if message.get("payload", {}).get("error", None):
                     raise Exception(
-                        f"💀 Error: {message['payload']['error']}: {message['payload']['localizedMessage']}"
+                        f"💀 Error: {message['payload']['error']}: {message['payload']['localizedMessage']} || {message['payload']['message']}"
                     )
 
                 await self.process_message(message)

@@ -9,10 +9,7 @@ class MessageModel(BaseModel):
 
 class Attach(BaseModel):
     base_url: str
-    type: Literal["photo"]
-
-    # idk
-    photo_id: Optional[str] = None
+    type: Literal["photo"] = "photo"
 
 
 class PhoneSentMessage(MessageModel):

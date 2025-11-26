@@ -1,5 +1,5 @@
 bot:
-  admins: [1320607880]
+  admins: [0]
   db_url: sqlite+aiosqlite:///bot/data.db
   ttl_default: 5
 
