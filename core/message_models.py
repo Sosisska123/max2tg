@@ -12,6 +12,10 @@ class Attach(BaseModel):
     type: Literal["photo"] = "photo"
 
 
+class DTO(BaseModel):
+    type: str
+
+
 class PhoneSentMessage(MessageModel):
     type: Literal["phone_sent"] = "phone_sent"
     short_token: str
@@ -30,11 +34,6 @@ class FetchChatsMessage(MessageModel):
     last_message_id: int
 
 
-class SendChatListMessage(MessageModel):
-    type: Literal["send_chat_list"] = "send_chat_list"
-    all_message: dict
-
-
 class StartAuthMessage(MessageModel):
     # from bot
     type: Literal["start_auth"] = "start_auth"
@@ -44,7 +43,7 @@ class StartAuthMessage(MessageModel):
 class VerifyCodeMessage(MessageModel):
     # from bot
     type: Literal["verify_code"] = "verify_code"
-    token: str
+    token: Optional[str] = None
     code: str
 
 
@@ -65,3 +64,26 @@ class ChatMsgMessage(MessageModel):
     text: Optional[str] = None
     attaches: Optional[list[Attach]] = None
     replied_msg: Optional["ChatMsgMessage"] = None
+
+
+class ErrorMessage(MessageModel):
+    type: Literal["error"] = "error"
+    message: str
+
+
+# --- DTO
+
+
+class SubscribeGroupDTO(DTO):
+    type: Literal["sub_group", "unsub_group"] = "sub_group"
+    owner_id: int
+    chat_id: int
+    chat_title: str
+
+
+class SelectChatDTO(DTO):
+    type: Literal["select_chat"] = "select_chat"
+    owner_id: int
+    chat_id: int
+    group_id: int
+    group_title: str

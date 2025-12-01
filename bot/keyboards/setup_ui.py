@@ -32,12 +32,12 @@ async def set_bot_commands(bot: Bot):
     # UI Commands for groups
     group_commands = [
         BotCommand(
-            command=ButtonPhrases.command_activate_max,
-            description=ButtonPhrases.command_activate_max_desc,
+            command=ButtonPhrases.command_subscribe_max,
+            description=ButtonPhrases.command_subscribe_max_desc,
         ),
         BotCommand(
-            command=ButtonPhrases.command_deactivate_max,
-            description=ButtonPhrases.command_deactivate_max_desc,
+            command=ButtonPhrases.command_unsubscribe_max,
+            description=ButtonPhrases.command_unsubscribe_max_desc,
         ),
     ]
 

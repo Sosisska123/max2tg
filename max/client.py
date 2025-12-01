@@ -19,6 +19,7 @@ from core.message_models import (
     SMSConfirmedMessage,
     PhoneSentMessage,
     Attach,
+    ErrorMessage,
 )
 
 from .templates.payloads import (
@@ -453,6 +454,13 @@ class MaxClient:
 
                 # Handle errors
                 if message.get("payload", {}).get("error", None):
+                    self._add_message_to_queue(
+                        ErrorMessage(
+                            user_id=self.tg_user_id,
+                            message=message["payload"]["localizedMessage"],
+                        )
+                    )
+
                     raise Exception(
                         f"💀 Error: {message['payload']['error']}: {message['payload']['localizedMessage']} || {message['payload']['message']}"
                     )

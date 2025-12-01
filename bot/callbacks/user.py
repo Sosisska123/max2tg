@@ -2,10 +2,10 @@ from aiogram import Router, F
 from aiogram import types
 
 from bot.db.database import Database
-from bot.utils.phrases import ErrorPhrases, Phrases
+from bot.utils.phrases import ErrorPhrases
 
 from core.queue_manager import get_queue_manager
-from core.message_models import SubscribeToChatMessage
+from core.message_models import SelectChatDTO
 
 router = Router()
 
@@ -27,6 +27,7 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
         if callback.message.chat.type not in ("group", "supergroup"):
             await callback.answer(ErrorPhrases.wrong_chat_type(), show_alert=True)
 
+        # TODO:
         await callback.message.delete()
         return
 
@@ -37,31 +38,13 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
         await callback.answer(ErrorPhrases.user_not_found(), show_alert=True)
         return
 
-    tg_group = await db.get_tg_group_by_id(callback.message.chat.id)
-
-    if not tg_group:
-        await callback.answer(
-            ErrorPhrases.chat_never_connected(callback.message.chat.title),
-            show_alert=True,
+    await get_queue_manager().to_ws.put(
+        SelectChatDTO(
+            owner_id=user.tg_id,
+            group_id=int(callback.message.chat.id),
+            chat_id=int(args[2]),
+            group_title=callback.message.chat.title,
         )
-        return
-
-    # Only the same user can subscribe it
-    if tg_group.creator_id != user.tg_id:
-        await callback.answer(Phrases.max_same_user_error(), show_alert=True)
-        return
-
-    max_chat_id = int(args[2])
-
-    r = await db.connect_tg_max(tg_group.self_id, max_chat_id)
-
-    if r:
-        await callback.answer(Phrases.max_chat_connection_success(max_chat_id))
-        data = SubscribeToChatMessage(
-            user_id=callback.from_user.id, chat_id=max_chat_id
-        )
-        await get_queue_manager().to_ws.put(data)
-    else:
-        await callback.answer(Phrases.max_chat_connection_error(max_chat_id))
+    )
 
     await callback.message.delete()

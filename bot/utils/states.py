@@ -8,10 +8,6 @@ class LoadScheduleFsm(StatesGroup):
     approve_schedule = State()
 
 
-class SubscribeMaxChat(StatesGroup):
-    select_listening_chat = State()
-
-
 class LoginWithMax(StatesGroup):
     phone_number = State()
     phone_code = State()

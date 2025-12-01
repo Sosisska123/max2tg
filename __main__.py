@@ -3,6 +3,7 @@ import asyncio
 
 from bot.db.database import init_bot_db
 from max.db.max_repo import init_max_db
+
 from bot.bot_file import bot
 from bot.db.db_dependency import DBDependency
 from bot.run_bot import start_bot
@@ -33,8 +34,14 @@ async def main():
 
     tasks = [
         asyncio.create_task(start_bot(config=config, db_dependency=bot_db_dependency)),
-        asyncio.create_task(handle_from_bot(max_manager=max_manager)),
-        asyncio.create_task(handle_from_ws(bot=bot, db_dependency=bot_db_dependency)),
+        asyncio.create_task(
+            handle_from_bot(
+                max_manager=max_manager,
+                db_dependency=max_db_dependency,
+                bot=bot,
+            )
+        ),
+        asyncio.create_task(handle_from_ws(bot=bot, db_dependency=max_db_dependency)),
     ]
 
     try:

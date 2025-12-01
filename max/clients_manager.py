@@ -101,6 +101,16 @@ class MaxManager:
 
         await client.get_messages_from_chat(chat_id)
 
+    async def subscribe_to_chat(self, key: int, chat_id: str):
+        """Subscribe to a chat to listen for new messages."""
+
+        client = self.get_client(key)
+
+        if client is None:
+            raise ValueError("Client with this TG User ID does not exist")
+
+        await client.listen_to_chat(chat_id)
+
     async def remove_client(self, key: int):
         """
         Remove a MaxClient from the parser
@@ -141,4 +151,4 @@ class MaxManager:
             # FIXME: Maybe i should add delay between lo
             await asyncio.sleep(1)
 
-            await self.add_client(acc.user_tg_id, acc.token, save_in_db=False)
+            await self.add_client(acc.tg_id, acc.token, save_in_db=False)

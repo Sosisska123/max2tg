@@ -83,11 +83,11 @@ class Phrases:
 
     @staticmethod
     def max_registration_required() -> str:
-        return f"❌ Вы не зарегистрированы в боте через <b>MAX</b>. <b>MAX Websocket</b> требует логин через номер телефона.\n\nЧтобы продолжить введите /{ButtonPhrases.command_max_reg}"
+        return f"❌ Аккаунт <b>MAX</b> не привязан в боте. Чтобы получить список чатов и получать сообщения нужно войти /{ButtonPhrases.command_max_reg}"
 
     @staticmethod
     def max_login_success() -> str:
-        return f"✅ <b>MAX</b> успешно зарегистрирован. Теперь перейдите в группу, в которую должны пересылаться сообщения из MAX и введите /{ButtonPhrases.command_activate_max}"
+        return f"✅ <b>MAX</b> успешно привязан. Теперь перейдите в группу, <b>в которую</b> должны пересылаться сообщения из MAX и введите /{ButtonPhrases.command_subscribe_max}"
 
     @staticmethod
     def max_login_failed() -> str:
@@ -273,21 +273,12 @@ class ButtonPhrases:
 
     # - - -
 
-    command_activate_max: str = "max_subscribe"
-    command_activate_max_desc: str = (
-        "Mark this group as connected to the MAX forwarding"
-    )
-    command_deactivate_max: str = "max_unsubscribe"
-    command_deactivate_max_desc: str = (
-        "Unmark this group as connected to the MAX forwarding"
-    )
-
     @staticmethod
     def max_reg_help() -> str:
         return (
-            f"/{ButtonPhrases.command_max_reg} -- Добавить аккаунт в бота"
-            f"/{ButtonPhrases.command_activate_max} -- Подписать группу, выбрать чат и получать сообщения в группе\n"
-            f"/{ButtonPhrases.command_deactivate_max} —- Отписать эту группу (не пресылать соо.)\n"
+            f"/{ButtonPhrases.command_max_reg} -- Добавить аккаунт в бота\n"
+            f"/{ButtonPhrases.command_subscribe_max} -- Подписать группу, выбрать чат и получать сообщения в группе\n"
+            f"/{ButtonPhrases.command_unsubscribe_max} —- Отписать эту группу (не пресылать соо.)\n"
             f"/{ButtonPhrases.command_max_delete} —- Удалить регистрацию в боте (не рабоатет)\n"
             f"/{ButtonPhrases.command_max_reconnect} —- Поменять читаемый чат в группе\n"
         )
@@ -296,5 +287,13 @@ class ButtonPhrases:
     command_max_reg = "max_reg"
     command_max_delete = "max_delete"
     command_max_reconnect = "max_recon"
+    command_subscribe_max: str = "max_sub"
+    command_unsubscribe_max: str = "max_unsub"
+    command_subscribe_max_desc: str = (
+        "Mark this group as connected to the MAX forwarding"
+    )
+    command_unsubscribe_max_desc: str = (
+        "Unmark this group as connected to the MAX forwarding"
+    )
 
     command_max_help_desc: str = "Помощь по подключению макса"

@@ -3,14 +3,17 @@ from typing import Union
 
 from aiogram import Bot
 
-from bot.db.database import Database
 from bot.db.db_dependency import DBDependency
 from bot.services.mailing_manager import forward_message_to_group
-from bot.utils.phrases import Phrases
+from bot.utils.phrases import Phrases, ErrorPhrases
+
+from max.db.max_repo import MaxRepository
 from max.clients_manager import MaxManager
+from max.utils.user_keyboard import max_chats_inline_kb
 
 from core.queue_manager import get_queue_manager
 from core.message_models import (
+    SubscribeGroupDTO,
     FetchChatsMessage,
     ChatMsgMessage,
     MessageModel,
@@ -18,20 +21,29 @@ from core.message_models import (
     SMSConfirmedMessage,
     StartAuthMessage,
     VerifyCodeMessage,
+    SelectChatDTO,
+    ErrorMessage,
 )
 
 
 logger = logging.getLogger(__name__)
 
 
-async def handle_from_bot(max_manager: MaxManager) -> None:
+async def handle_from_bot(
+    bot: Bot, max_manager: MaxManager, db_dependency: DBDependency
+) -> None:
     """Listen for commands from the bot and send them to the MAX WebSocket"""
 
     while True:
         try:
             msg = await get_queue_manager().to_ws.get()
 
-            await send_to_websocket(max_manager=max_manager, msg=msg)
+            await send_to_websocket(
+                max_manager=max_manager,
+                msg=msg,
+                db_dependency=db_dependency,
+                bot=bot,
+            )
             get_queue_manager().to_ws.task_done()
 
         except Exception as e:
@@ -59,14 +71,15 @@ async def send_to_bot(
     if isinstance(msg, list):
         if isinstance(msg[0], FetchChatsMessage):
             async with db_dependency.db_session() as session:
-                db = Database(session=session)
-                for fcmsg in msg:
-                    await db.store_user_max_chat(
+                db = MaxRepository(session=session)
+
+                for raw_fcmsg in msg:
+                    fcmsg = FetchChatsMessage.model_validate(raw_fcmsg.model_dump())
+
+                    await db.save_or_update_user_chat(
+                        owner_id=fcmsg.user_id,
                         chat_id=fcmsg.chat_id,
                         chat_title=fcmsg.chat_title,
-                        owner_tg_id=fcmsg.user_id,
-                        messages_count=fcmsg.messages_count,
-                        last_message_id=fcmsg.last_message_id,
                     )
         elif isinstance(msg[0], ChatMsgMessage):
             # i think it would be non-efficient to
@@ -79,7 +92,7 @@ async def send_to_bot(
             text = ""
 
             for m in msg:
-                cmmsg = ChatMsgMessage(msg)
+                cmmsg = ChatMsgMessage.model_validate(m.model_dump())
 
                 text = "\n".join(
                     f"💬 New message in chat `{cmmsg.chat_id}`: {cmmsg.text}"
@@ -98,23 +111,27 @@ async def send_to_bot(
                 psmsg = PhoneSentMessage.model_validate(msg.model_dump())
 
                 logger.info(
-                    "📃 Phone number confirmed, waiting for sms code...| Token: %s | User ID: %s",
+                    "📃 Phone number confirmed, waiting for sms code...| Short Token: %s | User ID: %s",
                     psmsg.short_token,
                     psmsg.user_id,
                 )
+
+                # Save account with the short token
+                async with db_dependency.db_session() as session:
+                    db = MaxRepository(session=session)
+
+                    await db.save_account(psmsg.user_id, psmsg.short_token)
 
                 await bot.send_message(psmsg.user_id, Phrases.max_request_sms())
 
             case "sms_confirmed":
                 scmsg = SMSConfirmedMessage.model_validate(msg.model_dump())
 
+                # Update user token
                 async with db_dependency.db_session() as session:
-                    db = Database(session=session)
+                    db = MaxRepository(session=session)
 
-                    await db.update_user_max_token(scmsg.user_id, scmsg.full_token)
-                    await db.update_user_max_permission(
-                        scmsg.user_id, True
-                    )  # FIXME: Leave only update_user_max_token
+                    await db.set_user_token(scmsg.user_id, scmsg.full_token)
 
                 await bot.send_message(scmsg.user_id, Phrases.max_login_success())
 
@@ -122,20 +139,20 @@ async def send_to_bot(
                 cmmsg = ChatMsgMessage.model_validate(msg.model_dump())
 
                 async with db_dependency.db_session() as session:
-                    db = Database(session=session)
+                    db = MaxRepository(session=session)
 
-                    connected_groups = await db.get_tg_groups_subscribed_to_max(
-                        cmmsg.chat_id
-                    )
+                    connected_groups = await db.get_subscribed_tg_groups(cmmsg.chat_id)
 
                 if not connected_groups:
                     logger.error("No subscribed groups for a chat: %s", cmmsg.chat_id)
                     return
 
+                ids = [group.group_id for group in connected_groups]
+
                 if cmmsg.replied_msg:
                     await forward_message_to_group(
                         bot=bot,
-                        tg_group_ids=connected_groups,
+                        tg_group_ids=ids,
                         sender_name=cmmsg.sender_id,
                         max_chat=cmmsg.chat_id,
                         message_text=cmmsg.text,
@@ -146,7 +163,7 @@ async def send_to_bot(
                 else:
                     await forward_message_to_group(
                         bot=bot,
-                        tg_group_ids=connected_groups,
+                        tg_group_ids=ids,
                         sender_name=cmmsg.sender_id,
                         max_chat=cmmsg.chat_id,
                         message_text=cmmsg.text,
@@ -156,6 +173,11 @@ async def send_to_bot(
             case "send_chat_list":
                 pass
 
+            case "error":
+                emsg = ErrorMessage.model_validate(msg.model_dump())
+
+                await bot.send_message(emsg.user_id, emsg.message)
+
             case _:
                 logger.error(f"Unknown action: {msg.type}")
 
@@ -163,7 +185,9 @@ async def send_to_bot(
         logger.error(f"[FROM WS] Error while executing command from parser: {e}")
 
 
-async def send_to_websocket(max_manager: MaxManager, msg: MessageModel) -> None:
+async def send_to_websocket(
+    max_manager: MaxManager, msg: MessageModel, db_dependency: DBDependency, bot: Bot
+) -> None:
     """Catch messages from the bot and send them to the Max"""
 
     if not msg.user_id:
@@ -180,11 +204,143 @@ async def send_to_websocket(max_manager: MaxManager, msg: MessageModel) -> None:
             case "verify_code":
                 vcmsg = VerifyCodeMessage.model_validate(msg.model_dump())
 
+                token = vcmsg.token
+
+                if token is None:
+                    async with db_dependency.db_session() as session:
+                        db = MaxRepository(session=session)
+                        token = await db.get_user_token(vcmsg.user_id)
+
                 await max_manager.check_code(
                     key=msg.user_id,
-                    short_token=vcmsg.token,
+                    short_token=token,
                     code=vcmsg.code,
                 )
+
+            case "sub_group":
+                scdto = SubscribeGroupDTO.model_validate(msg.model_dump())
+
+                async with db_dependency.db_session() as session:
+                    db = MaxRepository(session=session)
+                    group = await db.get_group(scdto.chat_id)
+
+                    if group:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            ErrorPhrases.chat_already_connected(scdto.chat_title),
+                        )
+
+                        return
+
+                    g = await db.add_group(
+                        owner_id=scdto.owner_id,
+                        group_title=scdto.chat_title,
+                        group_id=scdto.chat_id,
+                        chat_id=scdto.chat_id,
+                    )
+
+                    if g:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            Phrases.group_connected_success(
+                                scdto.chat_title, scdto.chat_id, scdto.chat_id
+                            ),
+                            reply_markup=max_chats_inline_kb(
+                                await db.get_max_available_chats(scdto.owner_id)
+                            ),
+                        )
+                    else:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            ErrorPhrases.something_went_wrong(),
+                        )
+
+            case "unsub_group":
+                scdto = SubscribeGroupDTO.model_validate(msg.model_dump())
+
+                async with db_dependency.db_session() as session:
+                    db = MaxRepository(session=session)
+                    group = await db.get_group(scdto.chat_id)
+
+                    if not group:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            ErrorPhrases.chat_never_connected(scdto.chat_title),
+                        )
+
+                        return
+
+                    if group.creator_id != scdto.owner_id:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            Phrases.max_same_user_error(group.creator_id),
+                        )
+                        return
+
+                    r = await db.remove_tg_group(
+                        group_id=scdto.chat_id,
+                        chat_id=scdto.chat_id,
+                    )
+
+                    if r:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            Phrases.group_unsubscribed_success(
+                                scdto.chat_title, scdto.chat_id, scdto.chat_id
+                            ),
+                            reply_markup=max_chats_inline_kb(
+                                await db.get_max_available_chats(scdto.owner_id)
+                            ),
+                        )
+
+                    else:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            ErrorPhrases.something_went_wrong(),
+                        )
+
+            case "select_chat":
+                scdto = SelectChatDTO.model_validate(msg.model_dump())
+
+                async with db_dependency.db_session() as session:
+                    db = MaxRepository(session=session)
+                    group = await db.get_group(scdto.group_id)
+
+                    if not group:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            ErrorPhrases.chat_never_connected(scdto.group_title),
+                        )
+
+                        return
+
+                    if group.creator_id != scdto.owner_id:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            Phrases.max_same_user_error(group.user_tg_id),
+                        )
+                        return
+
+                    r = await db.connect_group_to_chat(
+                        group_id=scdto.group_id,
+                        chat_id=scdto.chat_id,
+                    )
+
+                    if r:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            Phrases.max_chat_connection_success(scdto.chat_id),
+                        )
+
+                        await max_manager.subscribe_to_chat(
+                            key=scdto.owner_id, chat_id=scdto.chat_id
+                        )
+
+                    else:
+                        await bot.send_message(
+                            scdto.owner_id,
+                            ErrorPhrases.something_went_wrong(),
+                        )
 
     except Exception as e:
         logger.error(
