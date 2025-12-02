@@ -6,3 +6,8 @@ class LoadScheduleFsm(StatesGroup):
     load_file = State()
     load_rings = State()
     approve_schedule = State()
+
+
+class LoginWithMax(StatesGroup):
+    phone_number = State()
+    phone_code = State()

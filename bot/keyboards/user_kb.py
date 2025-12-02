@@ -5,10 +5,10 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
-from utils.phrases import ButtonPhrases
+from bot.utils.phrases import ButtonPhrases
 
 
-def main_user_panel() -> ReplyKeyboardMarkup:
+def reply_startup_kb() -> ReplyKeyboardMarkup:
     buttons = [
         [
             KeyboardButton(text=ButtonPhrases.today_command_panel),
@@ -23,7 +23,7 @@ def main_user_panel() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True)
 
 
-def under_post_keyboard() -> InlineKeyboardMarkup:
+def under_post_inline_kb() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.button(
@@ -36,32 +36,3 @@ def under_post_keyboard() -> InlineKeyboardMarkup:
         callback_data=ButtonPhrases.rings_command_panel,
     )
     return builder.adjust(2).as_markup(resize_keyboard=True)
-
-
-# def creste_inline_keyboard(
-#     *buttons: HomeworkData
-# ) -> InlineKeyboardMarkup:
-#     builder = InlineKeyboardBuilder()
-
-#     for hw in buttons:
-#         builder.button(
-#             text=hw.lesson_name.capitalize()
-#             if not hw.is_pinned
-#             else f"{hw.lesson_name.capitalize()} [📌]",
-#             callback_data=HomeworkCallbackData(
-#                 action=action or "", lesson_name=hw.lesson_name, sharaga_type=hw.sharaga
-#             ).pack(),
-#         )
-
-#     return builder.adjust(2, repeat=True).as_markup(resize_keyboard=True)
-
-
-# def create_reply_keyboard(*buttons: str, sizes: tuple[int] = (2,)) -> ReplyKeyboardMarkup:
-#     keyboard = ReplyKeyboardBuilder()
-
-#     for text in buttons:
-#         keyboard.add(KeyboardButton(text=text))
-
-#     return keyboard.adjust(*sizes).as_markup(
-#         resize_keyboard=True, one_time_keyboard=True
-#     )

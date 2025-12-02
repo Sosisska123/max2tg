@@ -9,37 +9,79 @@ class Phrases:
 
     @staticmethod
     def success() -> str:
-        return "✅ Register success"
+        return "✅ Регистрация пройдена"
 
     @staticmethod
     def already_registered() -> str:
         return "уже зареган"
 
-    @staticmethod
-    def rings_knn() -> str:
-        return "Exception: Index Out of Range Exception"
-
-    @staticmethod
-    def schedule_text(date: str) -> str:
-        return f"расписание на {date}"
-
-    @staticmethod
-    def rings_npk(date: str) -> str:
-        return f"🔔 расписание звонков {date}"
-
-    @staticmethod
-    def registration_required() -> str:
-        return "⚠️ не рег. /reg <b>нпк</b> чтобы рег"
+    # region MAX
 
     @staticmethod
     def max_forwarded_message_template(
-        max_chat: str, username: str, text: str, reply_message_id: int = None
-    ) -> str:
-        return (
-            f"<b>{max_chat} | {username}</b>: {text}"
-            if reply_message_id is None
-            else f"<b>{username}</b>: {text}\n<i>Reply to {reply_message_id}</i>"
-        )
+        chat_name: str,
+        sender_name: str,
+        text: str,
+        replied_msg_sender_name: str = None,
+        replied_msg_text: str = None,
+    ) -> str | tuple[str, str]:
+        if replied_msg_sender_name and replied_msg_text:
+            return (
+                f"↪️ Forwarded {replied_msg_sender_name}: {replied_msg_text}",
+                f"☁️ {chat_name} | {sender_name}: {text}",
+            )
+        else:
+            return f"☁️ {chat_name} | {sender_name}: {text}"
+
+    @staticmethod
+    def max_chat_connection_success(chat_name: str) -> str:
+        return f"✅ MAX чат <b>{chat_name}</b> успешно подписан"
+
+    @staticmethod
+    def max_chat_disconnection_success(chat_name: str) -> str:
+        return f"❌ MAX чат <b>{chat_name}</b> успешно отписан"
+
+    @staticmethod
+    def max_registration_required() -> str:
+        return f"❌ Аккаунт <b>MAX</b> не привязан в боте. Чтобы получить список чатов и получать сообщения нужно войти /{ButtonPhrases.command_max_reg}"
+
+    @staticmethod
+    def max_login_success() -> str:
+        return f"✅ <b>MAX</b> успешно привязан. Теперь перейдите в группу, <b>в которую</b> должны пересылаться сообщения из MAX и введите /{ButtonPhrases.command_subscribe_max}"
+
+    @staticmethod
+    def max_already_logged() -> str:
+        return "⚠️ MAX уже зарегистрирован"
+
+    @staticmethod
+    def max_phone_number_request() -> str:
+        return "Введите существующий номер, с которого нужно войти в MAX +71234567890"
+
+    @staticmethod
+    def max_wait_for_phone_acception(phone_number: str) -> str:
+        return f"СМС отправлено на номер {phone_number}. ⌛ Подождите пока пройдет верификация"
+
+    @staticmethod
+    def max_request_sms() -> str:
+        return "✅ <b>Теперь пришлите смс код</b>"
+
+    @staticmethod
+    def wait_for_confirmation() -> str:
+        return "⌛ Ожидание подтверждения..."
+
+    @staticmethod
+    def max_same_user_error(created_user_id: int) -> str:
+        return f"⚠️ Эта группа подписана <code>{created_user_id}</code>! только тот, кто подписал группу может ее отписать"
+
+    @staticmethod
+    def group_connected_success(group_name: str, creator_id: int, username: str) -> str:
+        return f"✅ Группа <b>{group_name}</b> подписана\nID создателя: <code>{creator_id}</code> | Username: <code>{username}</code>\nТеперь выберите чат <b>MAX из</b> которого будут пересылаться сообщения:"
+
+    @staticmethod
+    def group_disconnected_success(group_name: str) -> str:
+        return f"❌ Группа <b>{group_name}</b> успешно отписана"
+
+    # endregion
 
 
 class AdminPhrases:
@@ -128,18 +170,6 @@ class ErrorPhrases:
         return "⚠️ нет такой группы"
 
     @staticmethod
-    def length_error() -> str:
-        return "⚠️ слишком длинный"
-
-    @staticmethod
-    def ai_request_failed() -> str:
-        return "⚠️ произошла ошибка при обработке запроса"
-
-    @staticmethod
-    def value_error() -> str:
-        return "⚠️ ValueError"
-
-    @staticmethod
     def user_not_found() -> str:
         return "⚠️ /start to регистрации"
 
@@ -148,20 +178,20 @@ class ErrorPhrases:
         return f"⚠️ Не так быстро! Подождите немного перед следующим действием. <code>{time}</code> сек"
 
     @staticmethod
-    def wrong_file_type() -> str:
-        return "wrong file type"
-
-    @staticmethod
     def wrong_chat_type() -> str:
         return "⚠️ Wrong chat type! Chat must be group or supergroup"
 
     @staticmethod
-    def chat_already_connected(chat_name: str) -> str:
-        return f"⚠️ {chat_name.capitalize()} already connected"
+    def group_already_connected(group_name: str) -> str:
+        return f"⚠️ Группа <b>{group_name}</b> уже подключена"
 
     @staticmethod
-    def chat_never_connected(chat_name: str) -> str:
-        return f"⚠️ {chat_name.capitalize()} never connected"
+    def group_never_connected(group_name: str) -> str:
+        return f"⚠️ Группа <b>{group_name}</b> не подключена"
+
+    @staticmethod
+    def network_issues() -> str:
+        return "❌ something went wrong with server. Please try again later"
 
 
 class ButtonPhrases:
@@ -191,11 +221,27 @@ class ButtonPhrases:
 
     # - - -
 
-    command_activate_max: str = "max_subscribe"
-    command_activate_max_desc: str = (
+    @staticmethod
+    def max_reg_help() -> str:
+        return (
+            f"/{ButtonPhrases.command_max_reg} -- Добавить аккаунт в бота\n"
+            f"/{ButtonPhrases.command_subscribe_max} -- Подписать группу, выбрать чат и получать сообщения в группе\n"
+            f"/{ButtonPhrases.command_unsubscribe_max} —- Отписать эту группу (не пересылать сообщения)\n"
+            f"/{ButtonPhrases.command_max_delete} —- Удалить регистрацию в боте (не работает)\n"
+            f"/{ButtonPhrases.command_max_reconnect} —- Поменять читаемый чат в группе\n"
+        )
+
+    command_max_help = "max_help"
+    command_max_reg = "max_reg"
+    command_max_delete = "max_delete"
+    command_max_reconnect = "max_recon"
+    command_subscribe_max: str = "max_sub"
+    command_unsubscribe_max: str = "max_unsub"
+    command_subscribe_max_desc: str = (
         "Mark this group as connected to the MAX forwarding"
     )
-    command_deactivate_max: str = "max_unsubscribe"
-    command_deactivate_max_desc: str = (
+    command_unsubscribe_max_desc: str = (
         "Unmark this group as connected to the MAX forwarding"
     )
+
+    command_max_help_desc: str = "Помощь по подключению макса"

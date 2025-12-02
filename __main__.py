@@ -1,0 +1,92 @@
+import logging
+import asyncio
+
+from bot.db.database import init_bot_db
+from max.db.max_repo import init_max_db
+
+from bot.bot_file import bot
+from bot.db.db_dependency import DBDependency
+from bot.run_bot import start_bot
+
+from core.message_handler import handle_from_bot, handle_from_ws
+
+from max.clients_manager import MaxManager
+
+from config import config
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    datefmt=config.logging.date_format,
+    format=config.logging.log_format,
+)
+
+
+async def main():
+    bot_db_dependency = DBDependency(db_url=config.bot.db_url)
+    max_db_dependency = DBDependency(db_url=config.max.db_url)
+
+    # Initialize bot and max databases
+    await init_bot_db(bot_db_dependency.engine)
+    await init_max_db(max_db_dependency.engine)
+
+    max_manager = MaxManager(max_db_dependency)
+
+    tasks = [
+        asyncio.create_task(
+            start_bot(
+                config=config,
+                db_dependency=bot_db_dependency,
+            )
+        ),
+        asyncio.create_task(
+            handle_from_bot(
+                bot=bot,
+                max_manager=max_manager,
+                db_dependency=max_db_dependency,
+            )
+        ),
+        asyncio.create_task(
+            handle_from_ws(
+                bot=bot,
+                db_dependency=max_db_dependency,
+                bot_db_dependency=bot_db_dependency,
+            )
+        ),
+    ]
+
+    try:
+        logging.info("================ MAX запускается... ================")
+
+        await max_manager.startup()
+
+        logging.info("================ Бот запускается... ================")
+
+        await asyncio.gather(*tasks)
+    except Exception as e:
+        logging.error(f"Task failed: {e}", exc_info=True)
+    finally:
+        # Cancel all running tasks
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+
+        # Wait for cancellation to complete
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Cleanup resources
+        await bot_db_dependency.dispose()
+        await max_db_dependency.dispose()
+
+        # Cleanup max_manager if it has a shutdown method
+        if hasattr(max_manager, "shutdown"):
+            await max_manager.shutdown()
+
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logging.info("================ Бот остановлен ================")
+    except Exception as e:
+        logging.error(f"Ошибка {e}", exc_info=True)

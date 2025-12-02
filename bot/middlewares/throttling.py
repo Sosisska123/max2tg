@@ -1,25 +1,29 @@
-from aiogram import BaseMiddleware
-from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+import asyncio
 import logging
 
-from db.database import Database
+from aiogram import BaseMiddleware
 
-from settings import config
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
+
+from config import Settings
 
 from cachetools import TTLCache
 
-from utils.phrases import ErrorPhrases
+from bot.db.database import Database
+from bot.utils.phrases import ErrorPhrases
 
 log = logging.getLogger(__name__)
 
 
 class ThrottlingMiddleware(BaseMiddleware):
-    def __init__(self, session: async_sessionmaker[AsyncSession], ttl: int = 5):
+    def __init__(self, session: async_sessionmaker[AsyncSession], config: Settings):
         self.config = config
         self.session = session
-        self.ttl = ttl
-        self.user_timeouts = TTLCache(maxsize=10000, ttl=ttl)
-        self.notified_users = TTLCache(maxsize=10000, ttl=ttl)
+        self.ttl = config.bot.ttl_default
+        self.user_timeouts = TTLCache(maxsize=10000, ttl=config.bot.ttl_default)
+        self.notified_users = TTLCache(maxsize=10000, ttl=config.bot.ttl_default)
+
+        self._cache_lock = asyncio.Lock()
         super().__init__()
 
     async def __call__(self, handler, event, data):
@@ -35,32 +39,55 @@ class ThrottlingMiddleware(BaseMiddleware):
             data["db"] = db
 
             # попуск админов
-            if user in self.config.admins:
+            if user in self.config.bot.admins:
                 return await handler(event, data)
 
-            # Check if user is registered (for all other commands)
-            # registered_user = await db.get_user(event.from_user.id)
-            # if not registered_user:
-            #     if hasattr(event, "answer"):
-            #         await event.answer(Phrases.registration_required())
-            #     elif hasattr(event, "message"):
-            #         await event.answer(Phrases.registration_required(), show_alert=True)
-            #     return
-
             # Throttling logic
-            if user in self.user_timeouts:
-                if user not in self.notified_users:
+            # async with self._cache_lock:
+            #     if user in self.user_timeouts:
+            #         if user not in self.notified_users:
+            #             # For messages
+            #             if hasattr(event, "answer"):
+            #                 await event.answer(ErrorPhrases.flood_warning(self.ttl))
+            #             # For callback queries
+            #             elif hasattr(event, "message") and hasattr(
+            #                 event.message, "answer"
+            #             ):
+            #                 await event.message.answer(
+            #                     ErrorPhrases.flood_warning(self.ttl)
+            #                 )
+
+            #             self.notified_users[user] = None
+
+            #         return None
+
+            #     self.user_timeouts[user] = None
+
+            # Refactor to move I/O operations outside the lock:
+            # # Throttling logic
+            should_notify = False
+            should_throttle = False
+
+            async with self._cache_lock:
+                if user in self.user_timeouts:
+                    should_throttle = True
+
+                    if user not in self.notified_users:
+                        should_notify = True
+                        self.notified_users[user] = None
+                else:
+                    self.user_timeouts[user] = None
+
+            if should_throttle:
+                if should_notify:
                     # For messages
                     if hasattr(event, "answer"):
                         await event.answer(ErrorPhrases.flood_warning(self.ttl))
+
                     # For callback queries
                     elif hasattr(event, "message") and hasattr(event.message, "answer"):
                         await event.message.answer(ErrorPhrases.flood_warning(self.ttl))
 
-                    self.notified_users[user] = None
-
                 return None
-
-            self.user_timeouts[user] = None
 
             return await handler(event, data)

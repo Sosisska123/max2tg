@@ -1,9 +1,10 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from utils.phrases import AdminPhrases
+
+from bot.utils.phrases import AdminPhrases
 
 
-def main_admin_panel() -> InlineKeyboardMarkup:
+def main_admin_inline_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -26,7 +27,7 @@ def main_admin_panel() -> InlineKeyboardMarkup:
     )
 
 
-def manage_new_schedule(temp_id: int) -> InlineKeyboardMarkup:
+def manage_new_schedule_inline_kb(temp_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     builder.button(
