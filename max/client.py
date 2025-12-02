@@ -355,11 +355,22 @@ class MaxClient:
         attaches = []
         replied_msg = None
 
-        if message_data.get("link"):
-            replied_msg = message_data.get("link").get("message", {})
+        attaches.extend(await self._extract_all_attaches(message_data))
 
-            attaches.extend(await self._extract_all_attaches(message_data))
-            attaches.extend(await self._extract_all_attaches(replied_msg))
+        if message_data.get("link"):
+            replied_msg_raw = message_data.get("link").get("message", {})
+
+            if replied_msg_raw:
+                replied_msg = ChatMsgMessage(
+                    user_id=self.tg_user_id,
+                    chat_id=payload.get("chatId"),
+                    sender_id=replied_msg_raw.get("sender"),
+                    message_id=replied_msg_raw.get("id"),
+                    timestamp=replied_msg_raw.get("time"),
+                    text=replied_msg_raw.get("text"),
+                )
+
+            attaches.extend(await self._extract_all_attaches(replied_msg_raw))
 
         await self._add_message_to_queue(
             ChatMsgMessage(

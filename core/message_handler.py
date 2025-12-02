@@ -163,12 +163,12 @@ async def send_to_bot(
                 async with db_dependency.db_session() as session:
                     db = MaxRepository(session=session)
 
-                    connected_groups = await db.get_subscribed_tg_groups(cmmsg.chat_id)
+                    connected_groups = await db.get_groups_include_any(cmmsg.chat_id)
 
                 if not connected_groups:
                     logger.error("No subscribed groups for a chat: %s", cmmsg.chat_id)
 
-                    connected_groups = await db.get_all_tg_groups()
+                    return
 
                 ids = [group.group_id for group in connected_groups]
 
@@ -180,7 +180,7 @@ async def send_to_bot(
                         max_chat=cmmsg.chat_id,
                         message_text=cmmsg.text,
                         replied_sender_name=cmmsg.replied_msg.sender_id,
-                        replied_message_text=cmmsg.replied_msg.text,
+                        replied_text=cmmsg.replied_msg.text,
                         medias=cmmsg.attaches,
                     )
                 else:
@@ -316,7 +316,7 @@ async def send_to_websocket(
                     scdto.group_id,
                 )
 
-                r = await db.remove_tg_group(
+                r = await db.remove_group(
                     group_id=scdto.group_id,
                 )
 

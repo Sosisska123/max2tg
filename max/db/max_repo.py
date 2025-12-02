@@ -2,7 +2,7 @@ import logging
 
 from typing import Optional, List
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, or_
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,8 @@ from max.models.groups import Chat, Group
 
 
 log = logging.getLogger(__name__)
+
+ANY_CHAT_CODE = "any"
 
 
 async def init_max_db(engine):
@@ -98,7 +100,11 @@ class MaxRepository:
     # ---
 
     async def add_group(
-        self, owner_id: int, group_title: str, group_id: int, chat_id: int = None
+        self,
+        owner_id: int,
+        group_title: str,
+        group_id: int,
+        chat_id: int = ANY_CHAT_CODE,
     ) -> bool:
         try:
             stmt = (
@@ -162,7 +168,7 @@ class MaxRepository:
             await self.session.rollback()
             return False
 
-    async def remove_tg_group(self, group_id: int) -> bool:
+    async def remove_group(self, group_id: int) -> bool:
         try:
             stmt = (
                 update(Group)
@@ -177,7 +183,7 @@ class MaxRepository:
             await self.session.rollback()
             return False
 
-    async def get_subscribed_tg_groups(self, chat_id: int) -> Optional[list[Group]]:
+    async def get_subscribed_groups(self, chat_id: int) -> Optional[list[Group]]:
         """Get all TG Groups subscribed to the MAX chat"""
 
         try:
@@ -189,11 +195,16 @@ class MaxRepository:
             log.error(f"Error getting subscribed TG Groups: {e}")
             return []
 
-    async def get_all_tg_groups(self) -> Optional[list[Group]]:
+    async def get_groups_include_any(self, chat_id: int) -> Optional[list[Group]]:
         """Get all TG Groups"""
 
         try:
-            stmt = select(Group)
+            stmt = select(Group).where(
+                or_(
+                    Group.connected_chat_id == chat_id,
+                    Group.connected_chat_id == ANY_CHAT_CODE,
+                ),
+            )
 
             result = await self.session.execute(stmt)
             return result.scalars().all()

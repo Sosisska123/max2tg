@@ -16,7 +16,7 @@ from config import config
 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     datefmt=config.logging.date_format,
     format=config.logging.log_format,
 )
