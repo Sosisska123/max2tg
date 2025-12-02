@@ -76,17 +76,19 @@ class MaxClient:
 
     async def connect(self, auth_with_token: bool = False):
         """
-        Connect to the MAX websocket server and perform the handshake
-        You'll get a token if you are logging for the first time
-        Next time token will be used automatically
+        Connect to the MAX WebSocket server and perform the handshake
+
+        You need to get a token if you are logging in for the first time
+        Next time token will be used to authenticate
         """
 
         # TODO: turn off websocket builtin ping
+        # TODO: Add proxy support
 
         if self.websocket:
             raise Exception("Already connected")
 
-        logger.info("⌛ Trying to connect to MAX websocket...")
+        logger.info("⌛ Trying to connect to MAX WebSocket...")
 
         try:
             self.websocket = await websockets.connect(
@@ -104,17 +106,19 @@ class MaxClient:
                 await self.websocket.send(get_useragent_header_json())
                 self._get_next_seq()
 
-            logger.info("✅ Connected to MAX websocket")
+            logger.info("%s -- ✅ Connected to MAX WebSocket", self.tg_user_id)
 
-            self._recv_task = asyncio.create_task(self._read_messages())
+            self._recv_task = asyncio.create_task(self._receive_message_from_ws())
             self._ping_task = asyncio.create_task(self._send_ping())
 
         except Exception as e:
-            logger.error(f"Failed to connect to MAX websocket: {e}")
+            logger.error(
+                "%s -- ❌ Failed to connect to MAX WebSocket: %s", self.tg_user_id, e
+            )
             raise
 
     async def disconnect(self):
-        """Disconnect from the MAX websocket server."""
+        """Disconnect from the MAX WebSocket server"""
 
         if self.websocket:
             await self.websocket.close()
@@ -125,13 +129,17 @@ class MaxClient:
             if self._chat_subscription_ping_task:
                 self._chat_subscription_ping_task.cancel()
                 self.stop_listening_to_chat(self._current_listening_chat)
+
             self.websocket = None
+            self._seq = 0
+            self._counter = itertools.count(0, 1)
+            self._current_listening_chat = None
 
             logger.info("%s -- ❌ Disconnected from MAX WebSocket", self.tg_user_id)
 
     @ensure_connected
     async def listen_to_chat(self, chat_id: str):
-        """Listen to the specific chat for new messages"""
+        """Listen to the specific chat for new messages. ps: not necessary"""
 
         if chat_id == self._current_listening_chat:
             raise ValueError("You are already listening to this chat")
@@ -166,8 +174,7 @@ class MaxClient:
     @ensure_connected
     async def _subscribe_to_chat(self, chat_id: str, state: bool = True):
         """
-        Use it before getting messages
-        Subscribe or unsubscribe from a chat
+        Update subscription to a chat. ps: not necessary
         """
 
         logger.debug("Start/stop pinging to chat %s... | state: %s", chat_id, state)
@@ -177,7 +184,7 @@ class MaxClient:
 
     @ensure_connected
     async def read_last_message(self, chat_id: int, message_id: str):
-        """Mark the last message in a chat as read"""
+        """Mark the last message in a chat as read. ps: not necessary"""
 
         logger.debug(
             "Marking last message in chat %s as read... | message_id: %s",
@@ -197,7 +204,7 @@ class MaxClient:
         It sends only when the chat was opened for the first time
         """
 
-        logger.debug("Getting messages from chat %s ...", chat_id)
+        logger.info("Getting messages from chat %s ...", chat_id)
         await self.websocket.send(
             get_messages_json(chat_id, get_unix_now(), self._get_next_seq())
         )
@@ -211,12 +218,48 @@ class MaxClient:
 
     @ensure_connected
     async def check_code(self, token: str, code: str):
-        """Check the authentication code"""
+        """Verify the authentication code"""
 
         logger.debug("Verifying code... | token: %s", token)
         await self.websocket.send(
             get_check_code_json(token, code, self._get_next_seq())
         )
+
+    @ensure_connected
+    async def process_message(self, message: dict[str, Any]):
+        """Manage a received message"""
+
+        logger.debug("Processing message: %s", message)
+
+        match message.get("opcode", -1):
+            case 17:
+                await self._process_opcode17(message)
+            case 18:
+                await self._process_opcode18(message)
+            case 19:
+                await self._process_opcode19(message)
+            case 49:
+                await self._process_opcode49(message)
+            case 64:
+                await self._process_opcode64(message)
+            case 128:
+                await self._process_opcode128(message)
+            case -1:
+                logger.warning(f"Unknown opcode: {message}")
+            case _:
+                logger.warning(f"Unknown opcode: {message}")
+
+    @ensure_connected
+    async def fetch_chats(self):
+        """
+        Fetch chats using the provided auth token.
+        Use if you are logging for the first time
+        """
+
+        if self.token is None:
+            raise ValueError("Need to set token first")
+
+        await self.websocket.send(get_token_json(self.token, self._get_next_seq()))
 
     async def _extract_all_attaches(self, message: dict[str, Any]) -> list[Attach]:
         """
@@ -393,42 +436,6 @@ class MaxClient:
         await get_queue_manager().to_bot.put(message)
 
     @ensure_connected
-    async def process_message(self, message: dict[str, Any]):
-        """Manage a received message"""
-
-        logger.debug("Processing message: %s", message)
-
-        match message.get("opcode", -1):
-            case 17:
-                await self._process_opcode17(message)
-            case 18:
-                await self._process_opcode18(message)
-            case 19:
-                await self._process_opcode19(message)
-            case 49:
-                await self._process_opcode49(message)
-            case 64:
-                await self._process_opcode64(message)
-            case 128:
-                await self._process_opcode128(message)
-            case -1:
-                logger.warning(f"Unknown opcode: {message}")
-            case _:
-                logger.warning(f"Unknown opcode: {message}")
-
-    @ensure_connected
-    async def fetch_chats(self):
-        """
-        Fetch chats using the provided auth token.
-        Use if you are logging for the first time
-        """
-
-        if self.token is None:
-            raise ValueError("Need to set token first")
-
-        await self.websocket.send(get_token_json(self.token, self._get_next_seq()))
-
-    @ensure_connected
     async def _handshake(self):
         """Perform the initial handshake with the MAX websocket server with user provided token"""
 
@@ -439,8 +446,8 @@ class MaxClient:
         await self.websocket.send(get_token_json(self.token, self._get_next_seq()))
 
     @ensure_connected
-    async def _read_messages(self):
-        """Read messages from the websocket and log them"""
+    async def _receive_message_from_ws(self):
+        """Receive messages from the websocket and log them"""
 
         while self.websocket is not None:
             try:
@@ -479,7 +486,9 @@ class MaxClient:
 
             except websockets.exceptions.ConnectionClosed:
                 logger.warning("Websocket connection closed. Reconnecting...")
-                # TODO: Implement controlled reconnection to avoid task leaks
+                await self.disconnect()
+                await self.connect()
+                # TODO: add reconnection limit
                 break
 
             except AttributeError as e:

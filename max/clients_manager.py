@@ -15,11 +15,14 @@ logger = logging.getLogger(__name__)
 
 class MaxManager:
     """
-    Shared manager to manage and centralize the communication
-    between modules. It is used to manage the "Client API's"
+    `MaxManager` объединяет несколько активных аккаунтов (сессий)
+    и управляет ими, вызывая внутренние методы классов `MaxClient`,
+    используя `key` (или Telegram ID владельца) в качестве ключа.
 
-    Each "Client API" is an instance of the MaxClient class,
-    connected to its owner Telegram ID
+    Для работы класса необходимы некоторые действия, например, add_client().
+    А если функционала недостаточно, то его легко дополнить на основе существующих методов.
+
+    Управление классов, на данный момент осуществляется в основном через `message_handler.py`
     """
 
     def __init__(self, db_dependency: DBDependency):
