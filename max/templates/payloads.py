@@ -134,7 +134,7 @@ def get_subscribe_json(state: bool, chat_id: int, seq: int) -> str:
             "cmd": 0,
             "seq": seq,
             "opcode": 75,
-            "payload": {"chatId": str(chat_id), "subscribe": state},
+            "payload": {"chatId": chat_id, "subscribe": state},
         }
     )
 

@@ -31,7 +31,6 @@ from .templates.payloads import (
     get_messages_json,
     get_start_auth_json,
     get_check_code_json,
-    get_received_message_response_json,
 )
 
 from .utils.date import get_unix_now
@@ -41,6 +40,8 @@ from config import config
 from core.queue_manager import get_queue_manager
 
 logger = logging.getLogger(__name__)
+
+PING_OPCODE = 1
 
 
 def ensure_connected(method: Callable):
@@ -79,6 +80,8 @@ class MaxClient:
         You'll get a token if you are logging for the first time
         Next time token will be used automatically
         """
+
+        # TODO: turn off websocket builtin ping
 
         if self.websocket:
             raise Exception("Already connected")
@@ -121,9 +124,10 @@ class MaxClient:
                 self._ping_task.cancel()
             if self._chat_subscription_ping_task:
                 self._chat_subscription_ping_task.cancel()
+                self.stop_listening_to_chat(self._current_listening_chat)
             self.websocket = None
 
-            logger.info("❌ Disconnected from MAX websocket")
+            logger.info("%s -- ❌ Disconnected from MAX WebSocket", self.tg_user_id)
 
     @ensure_connected
     async def listen_to_chat(self, chat_id: str):
@@ -214,7 +218,7 @@ class MaxClient:
             get_check_code_json(token, code, self._get_next_seq())
         )
 
-    async def _extarct_all_attaches(self, message: dict[str, Any]) -> list[Attach]:
+    async def _extract_all_attaches(self, message: dict[str, Any]) -> list[Attach]:
         """
         This method is used to extract all attaches from a message
         """
@@ -316,7 +320,6 @@ class MaxClient:
 
         await self._add_message_to_queue(msgs)
 
-    @ensure_connected
     async def _process_opcode64(self, message: dict[str, Any]) -> None:
         """Process opcode 64: Collect new chat message in chat"""
 
@@ -339,7 +342,6 @@ class MaxClient:
             )
         )
 
-    @ensure_connected
     async def _process_opcode128(self, message: dict[str, Any]) -> None:
         """Process opcode 128: Receive new message from anywhere"""
 
@@ -356,8 +358,8 @@ class MaxClient:
         if message_data.get("link"):
             replied_msg = message_data.get("link").get("message", {})
 
-            attaches.extend(await self._extarct_all_attaches(message_data))
-            attaches.extend(await self._extarct_all_attaches(replied_msg))
+            attaches.extend(await self._extract_all_attaches(message_data))
+            attaches.extend(await self._extract_all_attaches(replied_msg))
 
         await self._add_message_to_queue(
             ChatMsgMessage(
@@ -398,15 +400,6 @@ class MaxClient:
                 await self._process_opcode64(message)
             case 128:
                 await self._process_opcode128(message)
-                # MAX web version send some data to server
-                payload = message.get("payload", {})
-                msg = payload.get("message", {})
-
-                await self.websocket.send(
-                    get_received_message_response_json(
-                        self._get_next_seq(), msg.get("chatId"), msg.get("id")
-                    )
-                )
             case -1:
                 logger.warning(f"Unknown opcode: {message}")
             case _:
@@ -454,10 +447,16 @@ class MaxClient:
 
                 # Handle errors
                 if message.get("payload", {}).get("error", None):
-                    self._add_message_to_queue(
+                    await self._add_message_to_queue(
                         ErrorMessage(
                             user_id=self.tg_user_id,
-                            message=message["payload"]["localizedMessage"],
+                            message=(
+                                message["payload"]["error"]
+                                + "\n\n"
+                                + message["payload"]["localizedMessage"]
+                                + "\n\n"
+                                + message["payload"]["message"]
+                            ),
                         )
                     )
 
@@ -472,8 +471,10 @@ class MaxClient:
                 # TODO: Implement controlled reconnection to avoid task leaks
                 break
 
-            except AttributeError:
-                # this must be a ping message
+            except AttributeError as e:
+                if isinstance(message, dict) and message.get("opcode") == PING_OPCODE:
+                    continue
+                logger.error(e)
                 continue
 
             except Exception as e:

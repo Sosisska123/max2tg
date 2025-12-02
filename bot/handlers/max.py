@@ -151,8 +151,8 @@ async def subscribe_max(message: Message, db: Database) -> None:
     await get_queue_manager().to_ws.put(
         SubscribeGroupDTO(
             owner_id=user.tg_id,
-            chat_id=message.chat.id,
-            chat_title=message.chat.title or "JD",
+            group_id=message.chat.id,
+            group_title=message.chat.title or "JD",
         )
     )
 
@@ -184,11 +184,19 @@ async def unsubscribe_max(message: Message, db: Database) -> None:
         await message.reply(ErrorPhrases.wrong_chat_type())
         return
 
-    await get_queue_manager().to_ws.put(
-        SubscribeGroupDTO(
-            type="unsub_group",
-            owner_id=user.tg_id,
-            chat_id=message.chat.id,
-            chat_title=message.chat.title,
+    try:
+        await get_queue_manager().to_ws.put(
+            SubscribeGroupDTO(
+                type="unsub_group",
+                owner_id=user.tg_id,
+                group_id=message.chat.id,
+                group_title=message.chat.title or "JD",
+            )
         )
-    )
+        await message.reply(Phrases.max_chat_disconnection_success())
+    except QueueShutDown as e:
+        logger.error("Failed to queue unsubscribe request: %s", e)
+        await message.reply(ErrorPhrases.network_issues())
+    except Exception as e:
+        logger.error("Failed to unsubscribe group: %s", e)
+        await message.reply(ErrorPhrases.something_went_wrong())

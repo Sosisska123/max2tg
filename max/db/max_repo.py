@@ -27,14 +27,18 @@ class MaxRepository:
     async def save_account(self, user_tg_id: int, token: str) -> Optional[MaxAccount]:
         """Add new account if it doesn't exist. Returns the new user object"""
         try:
-            account = MaxAccount(
-                tg_id=user_tg_id,
-                token=token,
+            stmt = (
+                insert(MaxAccount)
+                .values(tg_id=user_tg_id, token=token)
+                .on_conflict_do_nothing()
             )
-
-            self.session.add(account)
+            result = await self.session.execute(stmt)
             await self.session.commit()
-            return account
+
+            if result.rowcount > 0:
+                # Fetch and return the created account
+                return await self.get_account(user_tg_id)
+            return None
         except SQLAlchemyError as e:
             log.error(f"Error saving account {user_tg_id}: {e}")
             await self.session.rollback()
@@ -53,7 +57,7 @@ class MaxRepository:
             return None
 
     async def get_all_accounts(self) -> List[MaxAccount]:
-        """Get all users from a certain group"""
+        """Get all accounts"""
 
         try:
             stmt = select(MaxAccount)
@@ -113,9 +117,9 @@ class MaxRepository:
         except SQLAlchemyError as e:
             log.error(f"Error saving group {group_id}: {e}")
             await self.session.rollback()
-            return None
+            return False
 
-    async def save_or_update_user_chat(
+    async def save_user_chat(
         self,
         owner_id: int,
         chat_id: int,
@@ -128,20 +132,12 @@ class MaxRepository:
                 insert(Chat)
                 .values(
                     user_tg_id=owner_id,
-                    chat_id=chat_id,
                     chat_title=chat_title,
-                    messages_count=messages_count,
+                    chat_id=chat_id,
                     last_message_id=last_message_id,
+                    messages_count=messages_count,
                 )
-                .on_conflict_do_update(
-                    index_elements=["user_tg_id"],
-                    set_=dict(
-                        chat_id=chat_id,
-                        chat_title=chat_title,
-                        messages_count=messages_count,
-                        last_message_id=last_message_id,
-                    ),
-                )
+                .on_conflict_do_nothing()
             )
             result = await self.session.execute(stmt)
             await self.session.commit()
@@ -181,7 +177,7 @@ class MaxRepository:
             await self.session.rollback()
             return False
 
-    async def get_subscribed_tg_groups(self, chat_id) -> Optional[list[Group]]:
+    async def get_subscribed_tg_groups(self, chat_id: int) -> Optional[list[Group]]:
         """Get all TG Groups subscribed to the MAX chat"""
 
         try:
@@ -193,7 +189,20 @@ class MaxRepository:
             log.error(f"Error getting subscribed TG Groups: {e}")
             return []
 
-    async def get_group(self, group_id) -> Group:
+    async def get_all_tg_groups(self) -> Optional[list[Group]]:
+        """Get all TG Groups"""
+
+        try:
+            stmt = select(Group)
+
+            result = await self.session.execute(stmt)
+            return result.scalars().all()
+        except SQLAlchemyError as e:
+            log.error(f"Error getting TG Groups: {e}")
+            return []
+
+    async def get_group(self, group_id: int) -> Optional[Group]:
+        """Get a TG Group if there is a group with this ID subscribed to the MAX"""
         try:
             stmt = select(Group).where(Group.group_id == group_id)
 

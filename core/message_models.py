@@ -77,13 +77,13 @@ class ErrorMessage(MessageModel):
 class SubscribeGroupDTO(DTO):
     type: Literal["sub_group", "unsub_group"] = "sub_group"
     owner_id: int
-    chat_id: int
-    chat_title: str
+    group_id: int
+    group_title: str
 
 
 class SelectChatDTO(DTO):
     type: Literal["select_chat"] = "select_chat"
     owner_id: int
-    chat_id: int
     group_id: int
     group_title: str
+    chat_id: int

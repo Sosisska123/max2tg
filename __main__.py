@@ -26,22 +26,33 @@ async def main():
     bot_db_dependency = DBDependency(db_url=config.bot.db_url)
     max_db_dependency = DBDependency(db_url=config.max.db_url)
 
-    # Initialize bot  database
+    # Initialize bot and max databases
     await init_bot_db(bot_db_dependency.engine)
     await init_max_db(max_db_dependency.engine)
 
     max_manager = MaxManager(max_db_dependency)
 
     tasks = [
-        asyncio.create_task(start_bot(config=config, db_dependency=bot_db_dependency)),
         asyncio.create_task(
-            handle_from_bot(
-                max_manager=max_manager,
-                db_dependency=max_db_dependency,
-                bot=bot,
+            start_bot(
+                config=config,
+                db_dependency=bot_db_dependency,
             )
         ),
-        asyncio.create_task(handle_from_ws(bot=bot, db_dependency=max_db_dependency)),
+        asyncio.create_task(
+            handle_from_bot(
+                bot=bot,
+                max_manager=max_manager,
+                db_dependency=max_db_dependency,
+            )
+        ),
+        asyncio.create_task(
+            handle_from_ws(
+                bot=bot,
+                db_dependency=max_db_dependency,
+                bot_db_dependency=bot_db_dependency,
+            )
+        ),
     ]
 
     try:
@@ -65,7 +76,11 @@ async def main():
 
         # Cleanup resources
         await bot_db_dependency.dispose()
-        # Add any other cleanup for max_manager or bot if needed
+        await max_db_dependency.dispose()
+
+        # Cleanup max_manager if it has a shutdown method
+        if hasattr(max_manager, "shutdown"):
+            await max_manager.shutdown()
 
 
 if __name__ == "__main__":

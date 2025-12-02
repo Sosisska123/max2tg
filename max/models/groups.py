@@ -16,7 +16,7 @@ class Group(MaxBase):
     connected_chat_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
 
-# cached user saved groups
+# cached user saved chats
 class Chat(MaxBase):
     __tablename__ = "chats"
 

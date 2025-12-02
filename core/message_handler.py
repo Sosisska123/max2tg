@@ -3,6 +3,7 @@ from typing import Union
 
 from aiogram import Bot
 
+from bot.db.database import Database
 from bot.db.db_dependency import DBDependency
 from bot.services.mailing_manager import forward_message_to_group
 from bot.utils.phrases import Phrases, ErrorPhrases
@@ -13,6 +14,7 @@ from max.utils.user_keyboard import max_chats_inline_kb
 
 from core.queue_manager import get_queue_manager
 from core.message_models import (
+    DTO,
     SubscribeGroupDTO,
     FetchChatsMessage,
     ChatMsgMessage,
@@ -50,13 +52,20 @@ async def handle_from_bot(
             logger.error("[FROM BOT] Handling error: %s", e)
 
 
-async def handle_from_ws(bot: Bot, db_dependency: DBDependency) -> None:
+async def handle_from_ws(
+    bot: Bot, db_dependency: DBDependency, bot_db_dependency: DBDependency
+) -> None:
     """Listen for commands from the MAX WebSocket and send them to the bot"""
 
     while True:
         try:
             msg = await get_queue_manager().to_bot.get()
-            await send_to_bot(bot=bot, db_dependency=db_dependency, msg=msg)
+            await send_to_bot(
+                bot=bot,
+                db_dependency=db_dependency,
+                msg=msg,
+                bot_db_dependency=bot_db_dependency,
+            )
             get_queue_manager().to_bot.task_done()
 
         except Exception as e:
@@ -64,11 +73,18 @@ async def handle_from_ws(bot: Bot, db_dependency: DBDependency) -> None:
 
 
 async def send_to_bot(
-    bot: Bot, db_dependency: DBDependency, msg: Union[MessageModel, list[MessageModel]]
+    bot: Bot,
+    db_dependency: DBDependency,
+    msg: Union[MessageModel, list[MessageModel]],
+    bot_db_dependency: DBDependency,
 ) -> None:
     """Catch messages from a MAX Client and send them to the bot"""
 
     if isinstance(msg, list):
+        if not msg:
+            logger.warning("[FROM WS] Received empty message list")
+            return
+
         if isinstance(msg[0], FetchChatsMessage):
             async with db_dependency.db_session() as session:
                 db = MaxRepository(session=session)
@@ -76,7 +92,7 @@ async def send_to_bot(
                 for raw_fcmsg in msg:
                     fcmsg = FetchChatsMessage.model_validate(raw_fcmsg.model_dump())
 
-                    await db.save_or_update_user_chat(
+                    await db.save_user_chat(
                         owner_id=fcmsg.user_id,
                         chat_id=fcmsg.chat_id,
                         chat_title=fcmsg.chat_title,
@@ -133,6 +149,12 @@ async def send_to_bot(
 
                     await db.set_user_token(scmsg.user_id, scmsg.full_token)
 
+                # FIXME:
+                async with bot_db_dependency.db_session() as session:
+                    db = Database(session=session)
+
+                    await db.update_connection_state(scmsg.user_id, True)
+
                 await bot.send_message(scmsg.user_id, Phrases.max_login_success())
 
             case "new_chat_message":
@@ -145,7 +167,8 @@ async def send_to_bot(
 
                 if not connected_groups:
                     logger.error("No subscribed groups for a chat: %s", cmmsg.chat_id)
-                    return
+
+                    connected_groups = await db.get_all_tg_groups()
 
                 ids = [group.group_id for group in connected_groups]
 
@@ -190,7 +213,7 @@ async def send_to_websocket(
 ) -> None:
     """Catch messages from the bot and send them to the Max"""
 
-    if not msg.user_id:
+    if not isinstance(msg, DTO) and not msg.user_id:
         logger.error("[FROM BOT] User ID is empty")
         return
 
@@ -219,85 +242,95 @@ async def send_to_websocket(
 
             case "sub_group":
                 scdto = SubscribeGroupDTO.model_validate(msg.model_dump())
+                chats_list = None
 
                 async with db_dependency.db_session() as session:
                     db = MaxRepository(session=session)
-                    group = await db.get_group(scdto.chat_id)
+                    group = await db.get_group(scdto.group_id)
 
                     if group:
                         await bot.send_message(
-                            scdto.owner_id,
-                            ErrorPhrases.chat_already_connected(scdto.chat_title),
+                            scdto.group_id,
+                            ErrorPhrases.group_already_connected(scdto.group_title),
                         )
-
                         return
 
-                    g = await db.add_group(
-                        owner_id=scdto.owner_id,
-                        group_title=scdto.chat_title,
-                        group_id=scdto.chat_id,
-                        chat_id=scdto.chat_id,
-                    )
+                    chats_list = await db.get_max_available_chats(scdto.owner_id)
 
-                    if g:
-                        await bot.send_message(
-                            scdto.owner_id,
-                            Phrases.group_connected_success(
-                                scdto.chat_title, scdto.chat_id, scdto.chat_id
-                            ),
-                            reply_markup=max_chats_inline_kb(
-                                await db.get_max_available_chats(scdto.owner_id)
-                            ),
-                        )
-                    else:
-                        await bot.send_message(
-                            scdto.owner_id,
-                            ErrorPhrases.something_went_wrong(),
-                        )
+                    if not chats_list:
+                        raise ValueError("No available chats")
+
+                logger.debug(
+                    "Trying to add Group: %s | User ID: %s | Group ID: %s",
+                    scdto.group_title,
+                    scdto.owner_id,
+                    scdto.group_id,
+                )
+
+                g = await db.add_group(
+                    owner_id=scdto.owner_id,
+                    group_title=scdto.group_title,
+                    group_id=scdto.group_id,
+                )
+
+                if g:
+                    await bot.send_message(
+                        scdto.group_id,
+                        Phrases.group_connected_success(
+                            scdto.group_title, scdto.group_id, "None"
+                        ),
+                        reply_markup=max_chats_inline_kb(chats_list),
+                    )
+                else:
+                    await bot.send_message(
+                        scdto.group_id,
+                        ErrorPhrases.something_went_wrong(),
+                    )
 
             case "unsub_group":
                 scdto = SubscribeGroupDTO.model_validate(msg.model_dump())
 
                 async with db_dependency.db_session() as session:
                     db = MaxRepository(session=session)
-                    group = await db.get_group(scdto.chat_id)
+                    group = await db.get_group(scdto.group_id)
 
                     if not group:
                         await bot.send_message(
-                            scdto.owner_id,
-                            ErrorPhrases.chat_never_connected(scdto.chat_title),
+                            scdto.group_id,
+                            ErrorPhrases.group_never_connected(scdto.group_title),
                         )
 
                         return
 
-                    if group.creator_id != scdto.owner_id:
+                    if group.user_tg_id != scdto.owner_id:
                         await bot.send_message(
-                            scdto.owner_id,
-                            Phrases.max_same_user_error(group.creator_id),
+                            scdto.group_id,
+                            Phrases.max_same_user_error(group.user_tg_id),
                         )
                         return
 
-                    r = await db.remove_tg_group(
-                        group_id=scdto.chat_id,
-                        chat_id=scdto.chat_id,
+                logger.debug(
+                    "Trying to remove Group: %s | User ID: %s | Group ID: %s",
+                    scdto.group_title,
+                    scdto.owner_id,
+                    scdto.group_id,
+                )
+
+                r = await db.remove_tg_group(
+                    group_id=scdto.group_id,
+                )
+
+                if r:
+                    await bot.send_message(
+                        scdto.group_id,
+                        Phrases.group_disconnected_success(scdto.group_title),
                     )
 
-                    if r:
-                        await bot.send_message(
-                            scdto.owner_id,
-                            Phrases.group_unsubscribed_success(
-                                scdto.chat_title, scdto.chat_id, scdto.chat_id
-                            ),
-                            reply_markup=max_chats_inline_kb(
-                                await db.get_max_available_chats(scdto.owner_id)
-                            ),
-                        )
-
-                    else:
-                        await bot.send_message(
-                            scdto.owner_id,
-                            ErrorPhrases.something_went_wrong(),
-                        )
+                else:
+                    await bot.send_message(
+                        scdto.group_id,
+                        ErrorPhrases.something_went_wrong(),
+                    )
 
             case "select_chat":
                 scdto = SelectChatDTO.model_validate(msg.model_dump())
@@ -308,15 +341,14 @@ async def send_to_websocket(
 
                     if not group:
                         await bot.send_message(
-                            scdto.owner_id,
-                            ErrorPhrases.chat_never_connected(scdto.group_title),
+                            scdto.group_id,
+                            ErrorPhrases.group_never_connected(scdto.group_title),
                         )
-
                         return
 
-                    if group.creator_id != scdto.owner_id:
+                    if group.user_tg_id != scdto.owner_id:
                         await bot.send_message(
-                            scdto.owner_id,
+                            scdto.group_id,
                             Phrases.max_same_user_error(group.user_tg_id),
                         )
                         return
@@ -328,7 +360,7 @@ async def send_to_websocket(
 
                     if r:
                         await bot.send_message(
-                            scdto.owner_id,
+                            scdto.group_id,
                             Phrases.max_chat_connection_success(scdto.chat_id),
                         )
 
@@ -338,7 +370,7 @@ async def send_to_websocket(
 
                     else:
                         await bot.send_message(
-                            scdto.owner_id,
+                            scdto.group_id,
                             ErrorPhrases.something_went_wrong(),
                         )
 

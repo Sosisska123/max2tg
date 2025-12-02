@@ -24,15 +24,17 @@ async def forward_message_to_group(
 
     Args:
         bot (Bot): Bot object to perform sending
-        tg_groups (list[str]): List of target subscribed groups ID's
-        message_text (str): Source message text
-        username (str): Sender username
+        tg_group_ids (Union[int, list[int]]): Target group ID or list of group IDs
+        sender_name (str): Sender name
         max_chat (str): Chat name
+        message_text (str): Source message text
         replied_sender_name (str, optional): Replied sender name. Defaults to None.
         replied_text (str, optional): Replied text. Defaults to None.
-        medias (list[MediaModel], optional): List of media to forward. Max up to 10. Defaults to None.
-    """
-    # if message has attached media
+        medias (list[Attach], optional): List of media to forward. Max up to 10. Defaults to None.
+    """  # if message has attached media
+
+    many_files = False
+    single_media = None
 
     if medias:
         # If media is in plural
@@ -60,6 +62,8 @@ async def forward_message_to_group(
                         media_group.add_document(media.base_url)
                     case "video":
                         media_group.add_video(media.base_url)
+                    case _:
+                        logger.error(f"Unsupported media type: {media.type}")
         else:
             # Otherwise if it has only one file
 
@@ -121,6 +125,9 @@ async def forward_message_to_group(
                         ),
                     )
 
+                case _:
+                    logger.error(f"Unsupported media type: {single_media.type}")
+
         elif not many_files and not single_media:
             # Send text message otherwise
 
@@ -139,9 +146,6 @@ async def forward_message_to_group(
             logger.error(ErrorPhrases.something_went_wrong())
 
 
-# region admin
-
-
 def is_in_plural(files: list[str]) -> bool:
     if isinstance(files, str):
         return False
@@ -150,6 +154,3 @@ def is_in_plural(files: list[str]) -> bool:
         return False
 
     return len(files) > 1
-
-
-# endregion

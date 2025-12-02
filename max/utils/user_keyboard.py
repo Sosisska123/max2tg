@@ -23,6 +23,12 @@ def max_chats_inline_kb(chats: list[Chat]) -> InlineKeyboardMarkup:
         builder.button(text="☁️ Any", callback_data="max_chat_any")
     except AttributeError as e:
         logging.error(f"Error accessing chat attributes: {e}", exc_info=True)
+        builder = InlineKeyboardBuilder()
+        builder.button(text="🚫 Empty", callback_data="max_chat_empty")
+        return builder.as_markup(resize_keyboard=True)
+    except Exception as e:
+        logging.error(f"Error creating keyboard: {e}", exc_info=True)
+        builder = InlineKeyboardBuilder()
         builder.button(text="🚫 Empty", callback_data="max_chat_empty")
         return builder.as_markup(resize_keyboard=True)
 

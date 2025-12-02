@@ -43,24 +43,51 @@ class ThrottlingMiddleware(BaseMiddleware):
                 return await handler(event, data)
 
             # Throttling logic
+            # async with self._cache_lock:
+            #     if user in self.user_timeouts:
+            #         if user not in self.notified_users:
+            #             # For messages
+            #             if hasattr(event, "answer"):
+            #                 await event.answer(ErrorPhrases.flood_warning(self.ttl))
+            #             # For callback queries
+            #             elif hasattr(event, "message") and hasattr(
+            #                 event.message, "answer"
+            #             ):
+            #                 await event.message.answer(
+            #                     ErrorPhrases.flood_warning(self.ttl)
+            #                 )
+
+            #             self.notified_users[user] = None
+
+            #         return None
+
+            #     self.user_timeouts[user] = None
+
+            # Refactor to move I/O operations outside the lock:
+            # # Throttling logic
+            should_notify = False
+            should_throttle = False
+
             async with self._cache_lock:
                 if user in self.user_timeouts:
+                    should_throttle = True
+
                     if user not in self.notified_users:
-                        # For messages
-                        if hasattr(event, "answer"):
-                            await event.answer(ErrorPhrases.flood_warning(self.ttl))
-                        # For callback queries
-                        elif hasattr(event, "message") and hasattr(
-                            event.message, "answer"
-                        ):
-                            await event.message.answer(
-                                ErrorPhrases.flood_warning(self.ttl)
-                            )
-
+                        should_notify = True
                         self.notified_users[user] = None
+                else:
+                    self.user_timeouts[user] = None
 
-                    return None
+            if should_throttle:
+                if should_notify:
+                    # For messages
+                    if hasattr(event, "answer"):
+                        await event.answer(ErrorPhrases.flood_warning(self.ttl))
 
-                self.user_timeouts[user] = None
+                    # For callback queries
+                    elif hasattr(event, "message") and hasattr(event.message, "answer"):
+                        await event.message.answer(ErrorPhrases.flood_warning(self.ttl))
+
+                return None
 
             return await handler(event, data)

@@ -71,3 +71,19 @@ class Database:
             log.error(f"Error updating notification state for user {user_id}: {e}")
             await self.session.rollback()
             return False
+
+    async def update_connection_state(self, user_id: int, conn_state: bool) -> bool:
+        """Set user group connection allowed rule"""
+        try:
+            stmt = (
+                update(User)
+                .where(User.tg_id == user_id)
+                .values(can_connect_max=conn_state)
+            )
+            result = await self.session.execute(stmt)
+            await self.session.commit()
+            return result.rowcount > 0
+        except SQLAlchemyError as e:
+            log.error(f"Error updating connection state for user {user_id}: {e}")
+            await self.session.rollback()
+            return False
