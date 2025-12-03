@@ -55,7 +55,7 @@ class MaxManager:
         if key in self.clients:
             raise ValueError("Client with this TG User ID already exists")
 
-        client = MaxClient(token=token, tg_user_id=key)
+        client = MaxClient(token=token, tg_user_id=key, proxy="http://195.225.109.132:3128")
 
         if save_in_db:
             async with self.db_dependency.db_session() as session:
@@ -83,7 +83,7 @@ class MaxManager:
         if key in self.clients:
             raise Exception("Client with this TG User ID already exists")
 
-        client = MaxClient(tg_user_id=key)
+        client = MaxClient(tg_user_id=key, proxy="http://195.225.109.132:3128")
 
         await client.connect(auth_with_token=False)
         await client.start_auth(phone_number)
