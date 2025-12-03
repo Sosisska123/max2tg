@@ -7,6 +7,7 @@ from typing import Optional
 from bot.db.db_dependency import DBDependency
 
 from max.db.max_repo import MaxRepository
+from max.utils.proxy_utils import try_get_working_proxy
 
 from .client import MaxClient
 
@@ -55,7 +56,7 @@ class MaxManager:
         if key in self.clients:
             raise ValueError("Client with this TG User ID already exists")
 
-        client = MaxClient(token=token, tg_user_id=key, proxy="http://195.225.109.132:3128")
+        client = MaxClient(token=token, tg_user_id=key, proxy=try_get_working_proxy())
 
         if save_in_db:
             async with self.db_dependency.db_session() as session:
@@ -83,7 +84,7 @@ class MaxManager:
         if key in self.clients:
             raise Exception("Client with this TG User ID already exists")
 
-        client = MaxClient(tg_user_id=key, proxy="http://195.225.109.132:3128")
+        client = MaxClient(tg_user_id=key, proxy=try_get_working_proxy())
 
         await client.connect(auth_with_token=False)
         await client.start_auth(phone_number)
