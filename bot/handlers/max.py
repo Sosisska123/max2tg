@@ -143,16 +143,11 @@ async def subscribe_max(message: Message, db: Database) -> None:
         await message.reply(Phrases.max_registration_required())
         return
 
-    # Check if command has invoked in the correct chat type
-    if message.chat.type not in ("group", "supergroup"):
-        await message.reply(ErrorPhrases.wrong_chat_type())
-        return
-
     await get_queue_manager().to_ws.put(
         SubscribeGroupDTO(
             owner_id=user.tg_id,
             group_id=message.chat.id,
-            group_title=message.chat.title or "JD",
+            group_title=message.chat.title or "N/A",
         )
     )
 
@@ -179,18 +174,13 @@ async def unsubscribe_max(message: Message, db: Database) -> None:
         await message.reply(ErrorPhrases.user_not_found())
         return
 
-    # Check if command has invoked in the correct chat type
-    if message.chat.type not in ("group", "supergroup"):
-        await message.reply(ErrorPhrases.wrong_chat_type())
-        return
-
     try:
         await get_queue_manager().to_ws.put(
             SubscribeGroupDTO(
                 type="unsub_group",
                 owner_id=user.tg_id,
                 group_id=message.chat.id,
-                group_title=message.chat.title or "JD",
+                group_title=message.chat.title or "N/A",
             )
         )
         await message.reply(Phrases.max_chat_disconnection_success())

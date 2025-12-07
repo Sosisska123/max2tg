@@ -24,10 +24,6 @@ async def select_max_chat(callback: types.CallbackQuery, db: Database) -> None:
             await callback.message.delete()
         return
     elif args[2] == "any":
-        if callback.message.chat.type not in ("group", "supergroup"):
-            await callback.answer(ErrorPhrases.wrong_chat_type(), show_alert=True)
-
-        # TODO:
         await callback.message.delete()
         return
 

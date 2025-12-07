@@ -14,5 +14,4 @@ class User(Base):
 
     username: Mapped[str] = mapped_column(String(30), unique=True)
     notification_state: Mapped[bool] = mapped_column(default=True)
-    group: Mapped[int] = mapped_column(nullable=True)
     can_connect_max: Mapped[bool] = mapped_column(default=False)

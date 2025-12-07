@@ -31,12 +31,10 @@ class Database:
             log.error(f"Error getting user {user_id}: {e}")
             return None
 
-    async def create_user(
-        self, user_id: int, username: str, group: str
-    ) -> Optional[User]:
+    async def create_user(self, user_id: int, username: str) -> Optional[User]:
         """Add new user if it doesn't exist. Returns the new user object."""
         try:
-            user = User(tg_id=user_id, username=username, group=group)
+            user = User(tg_id=user_id, username=username)
             self.session.add(user)
             await self.session.commit()
             return user
