@@ -61,6 +61,7 @@ class ChatMsgMessage(MessageModel):
     chat_id: int
     message_id: str
     timestamp: int
+    sender_name: Optional[str] = None
     text: Optional[str] = None
     attaches: Optional[list[Attach]] = None
     replied_msg: Optional["ChatMsgMessage"] = None
