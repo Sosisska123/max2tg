@@ -1,8 +1,6 @@
 import re
 import logging
 
-from asyncio import QueueShutDown
-
 from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import Command
@@ -68,12 +66,6 @@ async def max_phone_number(message: Message, state: FSMContext) -> None:
         await state.clear()
         return
 
-    except QueueShutDown as e:
-        logger.error("Failed to queue auth request: %s", e)
-        await message.reply(ErrorPhrases.network_issues())
-        await state.clear()
-        return
-
     await message.reply(Phrases.max_wait_for_phone_acception(phone_number))
     await state.set_state(LoginWithMax.phone_code)
 
@@ -94,10 +86,6 @@ async def max_phone_code(message: Message, state: FSMContext) -> None:
     except ValueError as e:
         logger.error("Invalid code: %s. %s", message.text, e)
         await message.reply(ErrorPhrases.invalid())
-
-    except QueueShutDown as e:
-        logger.error("Failed to queue auth request: %s", e)
-        await message.reply(ErrorPhrases.network_issues())
 
     except Exception as e:
         logger.error(e)
@@ -184,9 +172,6 @@ async def unsubscribe_max(message: Message, db: Database) -> None:
             )
         )
         await message.reply(Phrases.max_chat_disconnection_success())
-    except QueueShutDown as e:
-        logger.error("Failed to queue unsubscribe request: %s", e)
-        await message.reply(ErrorPhrases.network_issues())
     except Exception as e:
         logger.error("Failed to unsubscribe group: %s", e)
         await message.reply(ErrorPhrases.something_went_wrong())
