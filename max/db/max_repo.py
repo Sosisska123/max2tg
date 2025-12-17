@@ -2,7 +2,7 @@ import logging
 
 from typing import Optional, List
 
-from sqlalchemy import select, update, or_
+from sqlalchemy import delete, select, update, or_
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -170,11 +170,7 @@ class MaxRepository:
 
     async def remove_group(self, group_id: int) -> bool:
         try:
-            stmt = (
-                update(Group)
-                .where(Group.group_id == group_id)
-                .values(connected_chat_id=None)
-            )
+            stmt = delete(Group).where(Group.group_id == group_id)
             result = await self.session.execute(stmt)
             await self.session.commit()
             return result.rowcount > 0
@@ -213,7 +209,7 @@ class MaxRepository:
             return []
 
     async def get_group(self, group_id: int) -> Optional[Group]:
-        """Get a TG Group if there is a group with this ID subscribed to the MAX"""
+        """Get TG Group if there is a group with this ID"""
         try:
             stmt = select(Group).where(Group.group_id == group_id)
 

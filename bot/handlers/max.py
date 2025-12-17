@@ -171,7 +171,6 @@ async def unsubscribe_max(message: Message, db: Database) -> None:
                 group_title=message.chat.title or "N/A",
             )
         )
-        await message.reply(Phrases.max_chat_disconnection_success())
     except Exception as e:
         logger.error("Failed to unsubscribe group: %s", e)
         await message.reply(ErrorPhrases.something_went_wrong())
